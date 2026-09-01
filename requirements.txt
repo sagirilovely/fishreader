@@ -1,0 +1,9 @@
+# TUI framework
+textual>=0.52,<9
+# HTML/XHTML cleaning for EPUB / MOBI
+beautifulsoup4>=4.12
+# TXT charset detection
+charset-normalizer>=3.0
+# MOBI unpacking (optional: if this fails to install, .mobi files are
+# reported as unsupported at runtime; the rest of the reader still works)
+mobi>=0.4

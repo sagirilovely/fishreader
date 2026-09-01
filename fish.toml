@@ -1,0 +1,35 @@
+# fish.toml — fishreader 配置
+# 首次启动自动生成；修改后重启生效。未知的键会被忽略。
+
+[books]
+scan_dirs = ["books"]              # 扫描目录（相对项目根，可多个）
+extensions = [".epub", ".mobi", ".txt"]
+allow_kindleunpack = false          # MOBI 解析失败时是否尝试外部 kindleunpack CLI
+
+[reader]
+font_size = "medium"               # small | medium | large（显示密度档位，不改终端真实字号）
+line_spacing = 0                   # 每个逻辑行后追加的空行数；设为非 0 时覆盖 font_size 的映射
+paragraph_spacing = 0              # 段落后追加的空行数；设为非 0 时覆盖 font_size 的映射
+reader_width = "30%"               # 阅读区占终端宽度百分比（25%-40%）或固定列数
+reader_position = "right"          # right | bottom（本版本使用 right）
+novel_style = "markdown"           # markdown | comment | docstring
+resume_last = true                 # 启动时自动续读上次书籍
+
+[disguise]
+agent_name = "CodeAgent"
+agent_version = "0.4.2"
+log_interval_min = 0.8             # 假日志间隔（秒）
+log_interval_max = 1.5
+log_style = "english"              # 只允许英文日志
+status_line = "minimal"            # minimal | full
+boss_key = "b"                     # 老板键
+full_hide_chinese = true           # 老板模式下过滤 CJK 字符
+
+[theme]
+log_level_color = true             # 日志级别着色（INFO/WARN/OK）
+reader_color = "gray"              # 阅读区颜色
+accent = "green"
+
+[progress]
+file = ".fish_progress.json"
+autosave_on_page = true            # 翻页即保存进度；false 时仅退出保存

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fishreader"
+version = "0.1.0"
+description = "Terminal novel reader disguised as a coding agent (摸鱼专用)"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "fish" }]
+keywords = ["tui", "reader", "textual", "disguise"]
+dependencies = [
+    "textual>=0.52,<9",
+    "beautifulsoup4>=4.12",
+    "charset-normalizer>=3.0",
+]
+
+[project.optional-dependencies]
+mobi = ["mobi>=0.4"]
+
+[project.scripts]
+fishreader = "fishreader.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
