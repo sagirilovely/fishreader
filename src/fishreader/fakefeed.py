@@ -47,7 +47,8 @@ class FakeFeed:
 
     def __init__(self, seed: int | None = None):
         self._rng = random.Random(seed)
-        self._recent: deque[str] = deque(maxlen=10)
+        self._recent: deque[tuple[str, int]] = deque(maxlen=12)  # (category, template idx)
+        self._recent_lines: deque[str] = deque(maxlen=16)       # rendered lines
 
     # -- generators ----------------------------------------------------------
 
@@ -137,12 +138,17 @@ class FakeFeed:
 
         names = [name for name, _ in _CATEGORIES]
         weights = [w for _, w in _CATEGORIES]
-        for _ in range(24):  # avoid repeating the same template recently
-            category = self._rng.choices(names, weights=weights, k=1)[0]
-            key = (category, self._rng.randint(0, 3))
-            if category not in self._recent:
-                break
-        self._recent.append(category)
+        category = self._rng.choices(names, weights=weights, k=1)[0]
+        tpl = self._rng.randint(0, 3)
+        key = (category, tpl)
+        if key in self._recent:
+            for _ in range(32):  # avoid repeating the same template recently
+                category = self._rng.choices(names, weights=weights, k=1)[0]
+                tpl = self._rng.randint(0, 3)
+                key = (category, tpl)
+                if key not in self._recent:
+                    break
+        self._recent.append(key)
 
         gen = getattr(self, f"_gen_{category}")()
         out: list[tuple[str, str]] = []
@@ -151,4 +157,19 @@ class FakeFeed:
             if len(line) > MAX_LINE_WIDTH:
                 line = line[: MAX_LINE_WIDTH - 3] + "..."
             out.append((label, line))
+        # Re-roll until no line repeats a recently emitted one (slots like
+        # issue numbers or search needles can otherwise collide by chance).
+        attempts = 0
+        while any(line in self._recent_lines for _, line in out) and attempts < 6:
+            attempts += 1
+            category = self._rng.choices(names, weights=weights, k=1)[0]
+            tpl = self._rng.randint(0, 3)
+            out = []
+            for label, text in getattr(self, f"_gen_{category}")():
+                line = f"{ts} [{label}] {text}"
+                if len(line) > MAX_LINE_WIDTH:
+                    line = line[: MAX_LINE_WIDTH - 3] + "..."
+                out.append((label, line))
+        for _, line in out:
+            self._recent_lines.append(line)
         return out

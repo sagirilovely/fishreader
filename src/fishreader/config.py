@@ -178,10 +178,16 @@ def _validate(raw: dict) -> None:
     if not isinstance(boss, str) or len(boss) != 1 or not boss.isprintable():
         raise ConfigError(f"disguise.boss_key must be a single printable character")
 
-    if isinstance(books["extensions"], (list, tuple)) and books["extensions"]:
+    exts = books["extensions"]
+    if isinstance(exts, (list, tuple)) and exts:
+        for e in exts:
+            if not isinstance(e, str) or not e.strip():
+                raise ConfigError(
+                    f"books.extensions entries must be strings like '.txt', got {e!r}"
+                )
         books["extensions"] = [
-            e.lower() if e.startswith(".") else f".{e.lower()}"
-            for e in books["extensions"]
+            e.strip().lower() if e.strip().startswith(".") else f".{e.strip().lower()}"
+            for e in exts
         ]
     else:
         raise ConfigError("books.extensions must be a non-empty list")

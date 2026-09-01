@@ -75,6 +75,7 @@ class FishApp(App[None]):
         self.wrap_width = 28
         self._line_spacing = 0
         self._paragraph_spacing = 0
+        self._term_height = 30
 
         width_css = config.raw["reader"]["reader_width"]
         css_width = width_css if isinstance(width_css, str) else f"{int(width_css)}"
@@ -99,6 +100,7 @@ class FishApp(App[None]):
             overflow-y: hidden;
         }}
         #reader-col.boss-hidden {{ display: none; }}
+        #reader-col.narrow-hidden {{ display: none; }}
         #reader-header {{
             height: 1;
             background: #12151c;
@@ -183,10 +185,16 @@ class FishApp(App[None]):
         self._update_statusbar()
 
     def on_resize(self, event) -> None:
-        del event
-        self._geometry_changed()
+        # text layout must use the *event* size: App._size is only refreshed
+        # after this handler runs.
+        w, h = event.size.width, event.size.height
+        self._geometry_changed(w, h)
         if self.current is not None:
-            self._render()
+            self._render(h=h)
+        # Narrow terminals: hide the reader column instead of breaking the
+        # layout (dev doc 9.2); restore it once there is room again.
+        narrow = w < 60
+        self.query_one("#reader-col", Vertical).set_class(narrow, "narrow-hidden")
 
     def on_unmount(self) -> None:
         agent_log = getattr(self, "_agent_log", None)
@@ -196,17 +204,20 @@ class FishApp(App[None]):
 
     # -- geometry ------------------------------------------------------------
 
-    def _geometry_changed(self) -> None:
-        term_w = max(self.size.width, MIN_TERMINAL_WIDTH)
+    def _geometry_changed(self, term_w: int | None = None, term_h: int | None = None) -> None:
+        term_w = term_w or self.size.width
+        term_h = term_h or self.size.height
+        term_w = max(term_w, MIN_TERMINAL_WIDTH)
         self.reader_cols = self.config.reader_width_columns(term_w)
         basis = FONT_WIDTH_BASIS.get(self.config.reader["font_size"], 2)
         self.wrap_width = max(4, self.reader_cols - basis)
         self._line_spacing, self._paragraph_spacing = self.config.effective_spacing()
+        self._term_height = term_h
         # clear wrap cache: geometry changed
         self._linecache = {}
 
-    def _visible_lines(self) -> int:
-        h = max(1, self.size.height - 2)  # titlebar + statusbar
+    def _visible_lines(self, height: int | None = None) -> int:
+        h = max(1, (height or self._term_height or self.size.height) - 2)
         return max(1, h // (1 + self._line_spacing))
 
     # -- chapter wrap cache ----------------------------------------------------
@@ -265,7 +276,7 @@ class FishApp(App[None]):
 
     # -- rendering ---------------------------------------------------------------
 
-    def _render(self) -> None:
+    def _render(self, h: int | None = None) -> None:
         book = self.current
         pane = self.query_one("#reader-pane", ReaderPane)
         if book is None or not book.readable:
@@ -275,7 +286,7 @@ class FishApp(App[None]):
             pane.set_page(Page([], 0, 0, self.chapter_index, eof=True))
             self._update_statusbar()
             return
-        visible = self._visible_lines()
+        visible = self._visible_lines(h)
         self.line_index = min(self.line_index, len(lines) - 1)
         start = self.line_index
         page_lines = lines[start : start + visible]

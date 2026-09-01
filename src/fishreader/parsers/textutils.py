@@ -72,9 +72,10 @@ def normalize_body(text: str) -> str:
 def split_chapters(text: str) -> list[tuple[str, str]]:
     """Split normalized text into (title, body) chapters.
 
-    Lines matching the chapter-title patterns start a new chapter; leading
-    content without a title becomes a '前言' (prologue) chapter; text with no
-    chapter markers at all is returned as a single chapter.
+    A title is any paragraph *line* matching the chapter-title patterns,
+    so both "第一章 x" alone and "第一章 x\\n正文…" (no blank line) work.
+    Leading content without a title becomes a '前言' (prologue) chapter;
+    text with no chapter markers at all is returned as a single chapter.
     """
     paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
     chapters: list[tuple[str, str]] = []
@@ -83,18 +84,30 @@ def split_chapters(text: str) -> list[tuple[str, str]]:
     cur_body: list[str] = []
 
     for para in paragraphs:
-        if _TITLE_RE.match(para):
-            if cur_title is not None:
-                chapters.append((cur_title, "\n\n".join(cur_body)))
-            elif prelude:
-                chapters.append(("前言", "\n\n".join(prelude)))
-                prelude = []
-            cur_title = para
-            cur_body = []
-        elif cur_title is None:
-            prelude.append(para)
-        else:
-            cur_body.append(para)
+        lines = para.split("\n")
+        title_idx = next(
+            (i for i, ln in enumerate(lines) if _TITLE_RE.match(ln)), None
+        )
+        if title_idx is None:
+            if cur_title is None:
+                prelude.append(para)
+            else:
+                cur_body.append(para)
+            continue
+
+        prefix = "\n".join(lines[:title_idx]).strip()
+        suffix = "\n".join(lines[title_idx + 1 :]).strip()
+        if cur_title is not None:
+            if prefix:
+                cur_body.append(prefix)
+            chapters.append((cur_title, "\n\n".join(cur_body)))
+        elif prelude or prefix:
+            if prefix:
+                prelude.append(prefix)
+            chapters.append(("前言", "\n\n".join(prelude)))
+            prelude = []
+        cur_title = lines[title_idx]
+        cur_body = [suffix] if suffix else []
 
     if cur_title is not None:
         chapters.append((cur_title, "\n\n".join(cur_body)))

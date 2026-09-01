@@ -35,8 +35,8 @@ def _is_word_char(ch: str) -> bool:
 def _wrap_para(para: str, width: int) -> list[tuple[str, int]]:
     """Greedy-wrap one paragraph.
 
-    Returns a list of (line_text, consumed) where consumed is the number of
-    source characters (from the start of para) that the line covers.
+    Returns a list of (line_text, start_offset) where start_offset is the
+    position of the line's first character within the paragraph.
     """
     if not para:
         return [("", 0)]
@@ -44,6 +44,7 @@ def _wrap_para(para: str, width: int) -> list[tuple[str, int]]:
     line = ""
     w = 0
     pos = 0
+    line_start = 0
     n = len(para)
     while pos < n:
         ch = para[pos]
@@ -53,17 +54,19 @@ def _wrap_para(para: str, width: int) -> list[tuple[str, int]]:
                 end += 1
             word = para[pos:end]
             if line and w + len(word) > width:
-                out.append((line.rstrip(), pos))
+                out.append((line.rstrip(), line_start))
+                line_start = pos
                 line, w = "", 0
             if len(word) > width:
                 if line:
-                    out.append((line.rstrip(), pos))
+                    out.append((line.rstrip(), line_start))
                     line, w = "", 0
                 k = 0
                 while k < len(word):
-                    out.append((word[k : k + width], pos + min(k + width, len(word))))
+                    out.append((word[k : k + width], pos + k))
                     k += width
                 pos = end
+                line_start = pos
                 continue
             line += word
             w += len(word)
@@ -74,21 +77,25 @@ def _wrap_para(para: str, width: int) -> list[tuple[str, int]]:
         if w + cw > width:
             # Flush the full line, then hang closing punctuation on to it so
             # it never starts the next line (行首禁则).
-            out.append((line.rstrip(), pos))
+            out.append((line.rstrip(), line_start))
             if ch in START_FORBIDDEN and out[-1][0]:
-                out[-1] = (out[-1][0] + ch, pos + 1)
+                out[-1] = (out[-1][0] + ch, out[-1][1])
                 line, w = "", 0
+                line_start = pos + 1
                 pos += 1
                 continue
             line, w = "", 0
             if ch == " ":
+                line_start = pos + 1
                 pos += 1
                 continue
+            line_start = pos
         if ch != " " or line:  # drop leading spaces, keep interior ones
             line += ch
             w += cw
         pos += 1
-    out.append((line.rstrip(), pos))
+    if line:
+        out.append((line.rstrip(), line_start))
     return out
 
 
@@ -97,7 +104,7 @@ def wrap_text_with_offsets(text: str, width: int) -> list[tuple[str, int]]:
 
     Explicit newlines are preserved: a blank line stays a blank line
     (paragraph boundary). Returns (line, char_offset) pairs where
-    char_offset is the offset of the line in `text`.
+    char_offset is the offset of the line's first character in `text`.
     """
     if width < 1:
         width = 1
@@ -108,8 +115,8 @@ def wrap_text_with_offsets(text: str, width: int) -> list[tuple[str, int]]:
             result.append(("", pos))
             pos += 1  # the newline itself
             continue
-        for line, consumed in _wrap_para(para, width):
-            result.append((line, pos))
+        for line, start_in_para in _wrap_para(para, width):
+            result.append((line, pos + start_in_para))
         pos += len(para) + 1
     return result
 
@@ -165,15 +172,28 @@ def paginate(
     if start_char >= total:
         return Page([], start_char, start_char, ci, eof=True, total_lines=total)
 
-    wrapped = wrap_text_with_offsets(text[start_char:], box_width)
+    visible = max(1, box_height // (1 + line_spacing))
+
+    # Only wrap what a single page can hold: each wrapped line consumes at
+    # most width+1 source characters, so this cap always yields >= visible
+    # lines when the remaining text is long enough — keeping page flips O(page)
+    # instead of O(whole book).
+    cap = visible * (box_width + 1) + box_width
+    chunk = text[start_char : start_char + cap]
+    wrapped = wrap_text_with_offsets(chunk, box_width)
     if not wrapped:
         return Page([], start_char, start_char, ci, eof=start_char >= total)
 
-    visible = max(1, box_height // (1 + line_spacing))
     page_lines = [line for line, _ in wrapped[:visible]]
-    last_consumed = wrapped[min(visible, len(wrapped)) - 1][1]
-    next_start = start_char + last_consumed
-    eof = next_start >= total
+    if len(wrapped) > visible:
+        # There is a next line: the next page starts at its first character.
+        next_start = start_char + wrapped[visible][1]
+        eof = False
+    else:
+        # The page consumed the whole remaining chunk (which is the tail of
+        # the book thanks to the cap above); nothing follows.
+        next_start = min(start_char + cap, total)
+        eof = next_start >= total
     return Page(
         lines=page_lines,
         first_char_offset=start_char,
