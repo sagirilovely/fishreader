@@ -55,6 +55,7 @@ python run.py --config my.toml   # 指定配置文件
 | `←` / `PgUp` | 上一页 |
 | `↑` / `↓` | 上下滚动一行 |
 | `n` / `p` | 下一章 / 上一章 |
+| `t` | 打开章节目录（table of contents），`↑/↓` 选择后回车跳章 |
 | `l` | 打开书籍列表（Open recent files） |
 | `b` | 老板键：切换全屏英文伪装模式 |
 | `q` | 退出并保存进度 |

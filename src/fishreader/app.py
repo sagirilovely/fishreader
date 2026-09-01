@@ -13,6 +13,7 @@ from pathlib import Path
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
 from textual.widgets import Static
 
 from fishreader.config import Config
@@ -22,6 +23,7 @@ from fishreader.models import Book
 from fishreader.state import ProgressStore
 from fishreader.textlayout import Page, wrap_text_with_offsets
 from fishreader.widgets.agent_log import AgentLog
+from fishreader.widgets.chapter_modal import ChapterModal
 from fishreader.widgets.library_modal import LibraryModal
 from fishreader.widgets.reader_pane import FONT_WIDTH_BASIS, ReaderPane
 
@@ -42,6 +44,7 @@ class FishApp(App[None]):
         Binding("down", "scroll_down", "scroll down one line"),
         Binding("n", "next_chapter", "next chapter"),
         Binding("p", "prev_chapter", "prev chapter"),
+        Binding("t", "toggle_chapters", "table of contents"),
         Binding("l", "toggle_library", "open recent files"),
         Binding("q", "quit", "quit"),
         Binding("ctrl+q", "quit", "quit"),
@@ -409,6 +412,8 @@ class FishApp(App[None]):
             self._render()
 
     def action_toggle_library(self) -> None:
+        if isinstance(self.screen, ModalScreen):
+            return  # one picker at a time
         if not self.candidates:
             self.notify("no books in the library yet", severity="warning")
             return
@@ -420,13 +425,31 @@ class FishApp(App[None]):
             callback=self._on_library_result,
         )
 
+    def action_toggle_chapters(self) -> None:
+        """Table of contents: jump to any chapter of the current book."""
+        if isinstance(self.screen, ModalScreen):
+            return  # one picker at a time
+        if self.current is None or not self.current.readable:
+            return
+        self.push_screen(
+            ChapterModal(self.current.chapters, self.chapter_index),
+            callback=self._on_toc_result,
+        )
+
+    def _on_toc_result(self, chapter_index: int | None) -> None:
+        if chapter_index is None:
+            return
+        self.chapter_index = chapter_index
+        self.line_index = 0
+        self._render()
+
     def action_toggle_boss_mode(self) -> None:
         """Boss key: hide the reading pane, drop any open popup, English only."""
         self._boss_mode = not self._boss_mode
         self.query_one("#reader-col", Vertical).set_class(
             self._boss_mode, "boss-hidden"
         )
-        if self._boss_mode and isinstance(self.screen, LibraryModal):
+        if self._boss_mode and isinstance(self.screen, ModalScreen):
             self.screen.dismiss(None)
         self._update_titlebar()
         self._update_statusbar()
