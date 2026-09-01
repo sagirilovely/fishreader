@@ -1,156 +1,155 @@
-# fishreader —— 终端摸鱼小说阅读器（CodeAgent 伪装版）
+# fishreader —— 摸鱼小说阅读器（终端 CodeAgent + 网页技术文档 双重伪装版）
 
-![fishreader 演示效果](demo.png)
+<p align="center">
+  <b>🖥️ 终端模式：正在工作的 CodeAgent 假日志</b><br>
+  <img src="demo.png" alt="fishreader 终端演示效果" width="85%">
+</p>
 
-在终端里读小说的摸鱼工具。界面伪装成一个正在干活的代码 Agent：主体是持续滚动的英文日志，小说只占一小块区域，伪装成工作笔记。老板走近时按一下老板键，界面立刻变成纯英文的工作台。
+<p align="center">
+  <b>🌐 网页模式：1:1 高仿真官方技术文档</b><br>
+  <img src="demo2.png" alt="fishreader 网页文档演示效果" width="85%">
+</p>
+
+为程序员量身定制的摸鱼小说阅读器。支持**终端 TUI** 与 **浏览器 Web** 双重高拟真伪装：
+- **终端模式**：主体持续滚动英文代码 Agent / Vite / npm / Git 日志，小说只占一小块区域伪装成工作笔记。
+- **网页模式**：1:1 像素级复刻主流官方技术文档（Vue 3 / React / Rust / Python），小说智能排版载入文档正文、提示框与代码块。
+- **老板键脱险**：终端按 `b` 一键隐藏小说变全屏日志；网页按 `b`/`Esc` 瞬间切为真实官方技术文档。
 
 > ⚠️ 工具本身只做本地文件解析与展示，不含任何规避监控/公司策略的能力。请自行评估使用场景。
 
+---
+
 ## 功能一览
 
-- 自动扫描 `books/` 目录（可配置），支持 `.txt` / `.epub` / `.mobi`
-- TXT 自动识别编码（UTF-8 / GBK / GB18030 / Big5），自动按章节拆分（`第一章`、`第3章`、`Chapter 1`、`CHAPTER IV` 等）
-- EPUB 按 spine 顺序提取正文，自动清理脚本/样式/导航；MOBI 优先用 `mobi` 库解包，失败时降级提示
-- **🌐 网页端伪装文档阅读器（新增）**：
-  - 启动终端摸鱼时后台自动启动零额外依赖的本地 Web 服务并自动打开浏览器
-  - 4 款高仿真技术文档体系：**Vue 3 (VitePress)**、**React (react.dev)**、**Rust (mdBook)**、**Python (Sphinx)**
-  - 小说章节智能排版为技术文档：H1/H2 标题、API 偏好开关、`💡 API 参考` / `⚠️ 注意事项` 提示框、语法高亮伪装代码块、右侧 `本页目录` (TOC)
-  - **网页老板键（一键脱险）**：按 `b` 键、`Esc` 或双击 Logo 瞬间切为真实官方技术文档，再按恢复
-  - 快捷键支持：`[` / `]` 上下章、`⌘K` 全局章节搜索、深色/浅色模式无缝切换
-  - 进度与终端端双向同步
-- **伪装日志 4 种风格随时切换**（`s` 键）：代码 Agent 日志、vite 构建输出、npm 安装/测试、git 操作流水——不同岗位都能选一个贴合的
-- **设置菜单**（`s` 键）：字号密度、阅读区位置（左/右/下）、阅读区宽度、行距、段距、正文样式、网页文档主题，全部即时生效并写回 `fish.toml`
-- **行距可精细到 0.25 行**（设置菜单）：终端只能画整行，小数行距会摊到整页——`0.25` 每 4 行插 1 个空行，比"每行插 1 个空行"密得多
-- 章节目录（`t` 键）：一键跳到任意章节；再按 `t` 光标自动定位到当前章节
-- 老板键（默认 `b`）：一键全屏英文模式，隐藏小说、关闭弹窗、过滤中文
-- 阅读进度自动保存，重启自动续读
+### 📚 书籍解析与管理
+- 自动扫描 `books/` 目录（可配置），支持 `.txt` / `.epub` / `.mobi`。
+- **TXT 智能解析**：自动识别字符编码（UTF-8 / GBK / GB18030 / Big5），按正则智能拆分章节。
+- **EPUB / MOBI 提取**：按 spine 顺序清洗并提取纯净正文，去除无关脚本与样式。
+- **阅读进度互通**：阅读进度本地原子写入 `.fish_progress.json`，终端与网页端双向实时同步，重启自动续读。
+
+### 🌐 网页技术文档阅读器
+- **零额外依赖**：内置基于 Python 标准库的轻量多线程 Web 服务，开箱即用，无需安装额外 pip 包。
+- **4 款高仿真技术文档体系**：
+  - **Vue 3 官方文档 (VitePress)**：经典 Vue 绿、顶部导航、左侧 API 风格偏好开关（选项式/组合式）、`💡 API 参考` 提示框、暗黑代码块、右侧 `本页目录` (TOC)。
+  - **React 官方文档 (react.dev)**：React 蓝主题、Deep Dive 深度探索框、Pitfall 避坑提示。
+  - **Rust (mdBook)** 与 **Python (Sphinx)** 文档风格。
+- **智能文档排版**：小说章节自动转化为 H1 标题、H2/H3 小节、文档段落、Callout 提示框及语法高亮代码块；支持 `clean`（纯净文档）、`hybrid`（混合模式）、`code_dense`（代码密集）3 种伪装风格。
+- **网页老板键（一键脱险）**：按下 `b` 键、`Esc` 或双击 Logo，页面瞬间切换为真实官方技术文档，再按一次恢复小说。
+- **快捷交互**：支持 `[` / `]` 上下章翻页、`⌘K` / `Ctrl+K` 全局章节搜索、深色/浅色主题实时切换。
+
+### 🖥️ 终端 CodeAgent 伪装
+- **4 种伪装日志风格**（`s` 键切换）：通用代码 Agent、Vite 构建流水、npm 测试输出、Git 操作日志。
+- **实时设置菜单**（`s` 键）：字号密度、阅读区位置（左/右/下）、阅读区占比（25%~40%）、行距、段距、正文风格（Markdown / Comment / Docstring），修改即时生效并持久化写回 `fish.toml`。
+- **精细小数行距**：终端支持 0.25 / 0.5 等细分行距平摊算法，可随心调节文本疏密。
+- **章节目录**（`t` 键）与 **书库切换**（`l` 键）。
+- **终端老板键**（默认 `b`）：一键全屏英文工作台，关闭所有弹窗并过滤 CJK 中文字符。
+
+---
 
 ## 安装
 
-需要 **Python 3.11+**（建议 3.13）。
+需要 **Python 3.11+**（推荐 3.13）。
 
 ```bash
-cd fish
+git clone https://github.com/sagirilovely/fishreader.git
+cd fishreader
 python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt      # 首次
-.venv/bin/pip install -e .                     # 可选：安装 fishreader 命令
+.venv/bin/pip install -r requirements.txt      # 首次安装依赖
+.venv/bin/pip install -e .                     # 可选：注册全局 fishreader 命令
 ```
 
-依赖：
+依赖说明：
 
-| 包 | 用途 |
+| 包名 | 用途 |
 |---|---|
-| `textual>=0.52,<9` | TUI 框架 |
-| `beautifulsoup4>=4.12` | EPUB/MOBI HTML 清洗 |
-| `charset-normalizer>=3.0` | TXT 编码识别 |
-| `mobi>=0.4`（可选） | MOBI 解包，装不上时 .mobi 标为不可读，其余功能不受影响 |
+| `textual>=0.52,<9` | 终端 TUI 界面框架 |
+| `beautifulsoup4>=4.12` | EPUB / MOBI 格式 HTML 清洗 |
+| `charset-normalizer>=3.0` | TXT 编码自动识别 |
+| `mobi>=0.4`（可选） | MOBI 文件解包，未安装时 .mobi 标为不可读，不影响其余格式 |
+
+---
 
 ## 使用方法
 
 ```bash
-python run.py                     # 启动终端摸鱼 + 自动打开网页文档阅读器
-python run.py --web-only          # 仅启动网页伪装服务（纯浏览器摸鱼）
-python run.py --no-web            # 仅启动终端摸鱼，不启动网页服务
-python run.py --port 8080         # 指定网页端口
+python run.py                     # 启动终端摸鱼，同时在默认浏览器中自动打开网页文档
+python run.py --web-only          # 纯网页摸鱼模式（不打开终端 TUI）
+python run.py --no-web            # 纯终端摸鱼模式（不启动网页服务）
 python run.py --theme react       # 指定网页文档主题 (vue / react / rust / python)
+python run.py --port 8080         # 指定网页端口
 python run.py --config my.toml    # 指定配置文件
-# 或安装后直接运行：fishreader
+# 若执行了 pip install -e .，可直接在任意目录运行：fishreader
 ```
 
-1. 把小说（`.txt` / `.epub` / `.mobi`）放进 `books/` 目录（路径可在配置里改）。
-2. 启动。首次启动会在项目根生成 `fish.toml`，并弹出书籍列表（伪装成 `Open recent files`）。
-3. 回车打开，按 `→` 翻页。读到哪里关掉都行，下次启动自动续读。
+1. 将小说（`.txt` / `.epub` / `.mobi`）放入 `books/` 目录（扫描路径可配置）。
+2. 运行 `python run.py`，首次运行会在项目根目录生成 `fish.toml` 配置文件。
+3. 终端通过方向键翻页，浏览器通过页面或快捷键浏览，阅读进度自动保存。
 
-### 按键
+---
 
-| 按键 | 功能 |
+## 快捷键说明
+
+### 🖥️ 终端快捷键
+
+| 按键 | 功能说明 |
 |---|---|
 | `→` / `Space` / `PgDn` | 下一页 |
 | `←` / `PgUp` | 上一页 |
 | `↑` / `↓` | 上下滚动一行 |
 | `n` / `p` | 下一章 / 上一章 |
-| `t` | 章节目录（table of contents），`↑/↓` 选择后回车跳章 |
+| `t` | 章节目录（TOC），方向键选择后回车跳转 |
 | `l` | 书籍列表（Open recent files） |
-| `s` | 设置菜单：`↑/↓` 选择、`←/→` 循环调节 |
-| `b` | 老板键：切换全屏英文伪装模式（默认，可在配置里改） |
-| `q` | 退出并保存进度 |
-| `Esc` | 关闭弹窗 |
+| `s` | 打开设置菜单，实时调节排版与主题 |
+| `b` | 终端老板键：切换全屏英文工作日志 |
+| `q` | 退出并保存当前阅读进度 |
+| `Esc` | 关闭当前弹窗 |
 
-底部状态栏始终显示按键提示（`[b]oss [t]oc [l]ibrary [s]ettings [q]uit`），老板键提示随配置的键值变化。
+### 🌐 网页端快捷键
 
-### 设置菜单（s 键）
+| 按键 | 功能说明 |
+|---|---|
+| `b` / `Esc` | **网页老板键**：瞬间切换为真实官方技术文档 / 恢复小说 |
+| `[` / `]` 或 `p` / `n` | 上一章 / 下一章 |
+| `⌘K` / `Ctrl+K` | 唤出全书章节快速跳转搜索栏 |
+| 双击文档 Logo | 快速触发老板键脱险 |
 
-按 `s` 打开设置弹窗，用 `↑/↓` 选条目、`←/→` 循环取值，**改动立即生效**并自动写回 `fish.toml`（目录只读时会提示仅本次会话生效）：
+---
 
-| 条目 | 取值 | 说明 |
-|---|---|---|
-| font size | small / medium / large | 显示密度档位，不改终端真实字号 |
-| reader position | left / right / bottom | 小说在左侧 / 右侧 / 底部（底部时占满宽度） |
-| reader width | 25% / 30% / 35% / 40% | 侧边布局时阅读区占屏宽比例 |
-| line spacing | auto / 1 / 2 | 逻辑行后额外空行；auto 跟随字号 |
-| paragraph spacing | auto / 1 / 2 | 段落后额外空行；auto 跟随字号 |
-| novel style | markdown / comment / docstring | 正文伪装成工作笔记 / 注释 / 文档字符串 |
-| log style | agent / vite / npm / git | 伪装日志风格，见下 |
+## 配置说明（fish.toml）
 
-### 伪装日志风格
-
-均只输出英文，时间戳 + `[INFO] [WARN] [OK]` 标签着色，间隔随机：
-
-- **agent**：通用代码 Agent——`planning next edit`、`$ pytest -q tests/`、`$ rg "..." src/`、`inspecting diff hunk` 等。
-- **vite**：前端构建/开发——`VITE v5.4.7 ready in 312 ms`、`hmr update /src/components/Header.vue`、chunk 大小告警、`built in 1.42s`。
-- **npm**：`npm install`、`npm test`、`npm warn deprecated ...`、`found 0 vulnerabilities`。
-- **git**：`git pull --ff-only`、`Rebasing (1/3)`、`git push origin main`、`Resolving deltas`。
-
-切换风格后下一条日志会先输出对应工具的"启动横幅"，像是刚开了一个新终端。建议按你的真实技术栈选择：前端用 vite/npm，后端/运维用 agent/git。
-
-### 老板键
-
-- 按 `b`（可在配置里改成别的键）：阅读区立刻隐藏，日志占满全屏，所有界面文本为纯英文，若正开着弹窗也会一并关闭。
-- 再按一次恢复原样，阅读位置不丢。
-- 老板键是全局优先键，任何界面上都能触发。
-
-### 阅读进度
-
-- 进度保存在项目根 `.fish_progress.json`：每本书记录 `chapter_index` + `char_offset` + `scroll_line`。
-- 翻页、跳章、退出时保存（可在配置关闭翻页自动保存）。
-- `resume_last = true` 时启动自动回到上次阅读位置；换终端宽度也不会错位（以字符偏移为准）。
-- 删除书籍后对应进度自动清理；删除 `.fish_progress.json` 即重置全部进度。
-
-## 配置（fish.toml）
-
-首次启动自动生成带注释的默认配置。常用的都在这里：
+首次启动自动生成带详尽注释的 `fish.toml`：
 
 ```toml
 [books]
-scan_dirs = ["books"]            # 扫描目录（可多个，支持绝对路径）
+scan_dirs = ["books"]            # 扫描目录（可指定多个或绝对路径）
 extensions = [".epub", ".mobi", ".txt"]
 allow_kindleunpack = false       # MOBI 失败时是否尝试外部 kindleunpack CLI
 
-[reader]                         # 以下键均可运行时按 s 调整并自动写回
-font_size = "medium"             # small | medium | large（显示密度，不动终端真实字号）
+[reader]                         # 终端阅读区配置（按 s 可在运行时热调节）
+font_size = "medium"             # small | medium | large（显示密度档位）
 line_spacing = 0                 # 行距（额外空行数，支持 0/0.25/0.5/.../2 小数）
-paragraph_spacing = 0            # 段距（段落后额外空行，同上）
-reader_width = "30%"             # 阅读区宽度："25%"~"40%" 或固定列数（如 36）
+paragraph_spacing = 0            # 段距（段落后额外空行）
+reader_width = "30%"             # 阅读区宽度："25%"~"40%" 或固定列数
 reader_position = "right"        # left | right | bottom（底部时阅读区占满宽度）
 novel_style = "markdown"         # markdown | comment | docstring
-resume_last = true               # 启动续读上次书籍
+resume_last = true               # 启动时自动续读上次书籍
 
 [disguise]
 agent_name = "CodeAgent"
 agent_version = "0.4.2"
-log_interval_min = 0.8           # 假日志最小/最大间隔（秒）
+log_interval_min = 0.8           # 假日志滚动间隔（秒）
 log_interval_max = 1.5
-log_style = "agent"              # agent | vite | npm | git（仅英文）
-status_line = "minimal"          # minimal | full（页面/行数提示）
-boss_key = "b"                   # 老板键（单个可打印字符）
-full_hide_chinese = true         # 老板模式过滤 CJK
+log_style = "agent"              # agent | vite | npm | git
+status_line = "minimal"          # minimal | full
+boss_key = "b"                   # 终端老板键
+full_hide_chinese = true         # 老板模式过滤全部中文
 
 [web]
-enabled = true                   # 启动时是否同时运行网页伪装阅读器
-port = 8080                      # Web 服务端口（占用时自动尝试下一个端口）
+enabled = true                   # 是否同步运行网页端伪装文档服务
+port = 8080                      # Web 端口（端口被占用时自动递增探测）
 host = "127.0.0.1"               # 监听地址
-auto_open = true                 # 启动时是否自动在默认浏览器打开
-theme = "vue"                    # 默认文档主题: vue | react | rust | python
+auto_open = true                 # 启动时是否自动在默认浏览器中打开
+theme = "vue"                    # 默认技术文档主题: vue | react | rust | python
 disguise_mode = "hybrid"         # 网页排版伪装风格: clean | hybrid | code_dense
 
 [theme]
@@ -159,43 +158,39 @@ reader_color = "gray"            # 阅读区颜色
 accent = "green"
 
 [progress]
-file = ".fish_progress.json"
+file = ".fish_progress.json"     # 进度持久化存储文件
 autosave_on_page = true          # 翻页即存进度；false 则仅退出时保存
 ```
 
-说明：
-
-- **font_size 是显示密度档位**，不改终端真实字号——真实字号用终端自身的缩放快捷键（macOS Terminal/iTerm2：`Cmd`+`+` / `Cmd`+`-`）。
-- `line_spacing` / `paragraph_spacing` 设为 0 表示跟随 `font_size` 的映射（small=0/0、medium=0/1、large=1/2）；设为非 0 时以配置为准。
-- **行距可以小于一行**：终端只能画整行，所以 0.25/0.5 这类小数会被"摊"到整页——`0.25` = 每 4 行插 1 个空行，`0.5` = 每 2 行插 1 个空行。设置菜单里按 `←/→` 以 0.25 为步进循环（`0`→`0.25`→`0.5`→…→`2`），嫌 1 个空行太宽时往小调即可；`small` 档 + 两个 0 已经是最密（完全无空行）。
-- 从设置菜单改动会以"保留注释、只改对应键"的方式写回本文件；手写配置依然生效（重启后不冲突）。
+---
 
 ## 常见问题
 
-**启动后书没出现？**
-确认文件放在 `books/`（默认扫描目录），扩展名在 `extensions` 里；文件为隐藏文件（`.` 开头）会被跳过。
+**Q: 启动后书库为空？**  
+A: 请确认书籍已放入 `books/` 目录且扩展名匹配。以 `.` 开头的隐藏文件会被自动过滤。
 
-**MOBI 打不开？**
-检查 `pip install mobi` 是否成功；失败文件会在列表/打开时提示原因（多为 DRM）。可先开启 `allow_kindleunpack` 并安装 `kindleunpack`，或转成 TXT/EPUB。
+**Q: MOBI 格式无法打开？**  
+A: 检查是否已安装 `mobi` 包（`pip install mobi`）。若为 DRM 加密书籍会给出明确错误提示，建议转换为 EPUB 或 TXT 格式阅读。
 
-**提示 terminal too small？**
-窗口至少 40 列 × 12 行；放大后重启。窗口过窄（<60 列）时阅读区会自动隐藏（老板经过也看不出来）。
+**Q: 终端提示 terminal too small？**  
+A: 终端窗口至少需要 40 列 × 12 行。当终端窗口过窄时，阅读区会自动隐藏以防泄露。
 
-**书里的编码乱码？**
-TXT 编码按 charset-normalizer 识别，兜底顺序 UTF-8 → GB18030 → GBK → Big5；个别文件仍可能识别失败，可自行转成 UTF-8。
+**Q: 网页端如何完全离线使用？**  
+A: 网页前端采用原生 HTML5 / CSS3 / ES6 构建，零外部 CDN 引用，断网环境下依然 100% 完整可用。
 
-**想换大一点的真实字号？**
-应用内 `font_size` 只调密度；真实字号用终端缩放快捷键。
+---
 
-## 开发
+## 开发与测试
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v   # 单元测试（117 项）
+.venv/bin/python -m unittest discover -s tests -v   # 运行全部 158 项单元测试
 ```
 
-模块结构、设计决策见 [docs/开发文档.md](docs/开发文档.md)，需求见 [docs/需求文档.md](docs/需求文档.md)。核心模块（解析、分页、配置、编码、假日志生成）不依赖 TUI，可独立测试。
+更多架构设计与技术细节详见 [docs/开发文档.md](docs/开发文档.md) 与 [docs/需求文档.md](docs/需求文档.md)。
 
-## 兼容性与隐私
+---
 
-- 优先支持 macOS / Linux 现代终端（Terminal、iTerm2、GNOME Terminal、kitty 等）；Windows Terminal 其次。
-- 应用完全本地运行：不联网、不上传、不读取项目目录以外的文件（除非配置里显式指定路径）。
+## 隐私与安全
+
+- 本工具为纯本地应用：不联网、不向任何外部服务器上传数据。
+- 仅读取配置的扫描目录与本地书籍，不扫描项目外的无关文件。
