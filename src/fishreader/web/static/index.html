@@ -179,13 +179,13 @@
             <!-- Dynamically populated -->
           </ul>
 
-          <!-- Sponsor Placeholder (Pixel-perfect matching Vue screenshot) -->
-          <div class="sponsor-box">
+          <!-- Sponsor Placeholder / Docked Ad Container -->
+          <div id="sidebar-sponsor-anchor" class="sponsor-box">
             <div class="sponsor-title">赞助位</div>
             <div class="sponsor-card">
               <span class="sponsor-text">成为赞助商</span>
             </div>
-            <div class="sponsor-banner-mock">
+            <div class="sponsor-banner-mock" id="sidebar-ad-mock">
               <div class="sponsor-inner">
                 <span class="mock-tag">PARTNER</span>
                 <span class="mock-desc">AI 智能辅助与企业级开发套件</span>
@@ -195,6 +195,159 @@
         </div>
       </aside>
 
+    </div>
+
+    <!-- Floating Ad & Video Disguise Widget -->
+    <div id="floating-ad-widget" class="floating-ad pos-bottom-right size-normal" data-ad-style="flashy_game">
+      <!-- Widget Header / Disguise Top Bar -->
+      <div class="ad-widget-header" id="ad-widget-header">
+        <div class="ad-badge-group">
+          <span class="ad-label" id="ad-title-label">赞助商提供</span>
+          <span class="ad-tag">AD</span>
+        </div>
+        <div class="ad-actions">
+          <button type="button" class="ad-btn" id="ad-source-btn" title="投放配置 / 视频源 (本地/在线/目录)">⚙</button>
+          <button type="button" class="ad-btn" id="ad-size-btn" title="切换尺寸 (小/中/大/特大)">⛶</button>
+          <button type="button" class="ad-btn" id="ad-dock-btn" title="切换悬浮 / 侧边栏内嵌">📌</button>
+          <button type="button" class="ad-btn close" id="ad-close-btn" title="关闭广告">×</button>
+        </div>
+      </div>
+
+      <!-- Video Display Container -->
+      <div class="ad-body-container" id="ad-body-container">
+        <!-- Native Video Element -->
+        <video id="ad-video-element" playsinline preload="metadata" loop></video>
+
+        <!-- Empty / Placeholder State -->
+        <div id="ad-placeholder" class="ad-placeholder">
+          <div class="ad-placeholder-content">
+            <div class="ad-placeholder-icon">📺</div>
+            <div class="ad-placeholder-title">Mall4j 开源商城</div>
+            <div class="ad-placeholder-desc">Gitee 15k Star · 企业级微服务架构</div>
+            <button type="button" class="ad-placeholder-btn" id="ad-select-video-btn">加载视频摸鱼</button>
+          </div>
+        </div>
+
+        <!-- Floating Video Controls (Hover-to-show) -->
+        <div id="ad-video-controls" class="ad-video-controls hidden">
+          <div class="controls-top">
+            <input type="range" id="video-seek-bar" class="video-seek" min="0" max="100" step="0.1" value="0">
+          </div>
+          <div class="controls-bottom">
+            <div class="controls-left">
+              <button type="button" id="video-play-btn" class="ctrl-btn" title="播放 / 暂停 (快捷键: v)">▶</button>
+              <span id="video-time-display" class="video-time">00:00 / 00:00</span>
+            </div>
+            <div class="controls-right">
+              <select id="video-speed-select" class="ctrl-select" title="倍速">
+                <option value="0.75">0.75x</option>
+                <option value="1.0" selected>1.0x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2.0">2.0x</option>
+              </select>
+              <button type="button" id="video-mute-btn" class="ctrl-btn" title="静音">🔊</button>
+              <input type="range" id="video-volume-bar" class="ctrl-vol" min="0" max="1" step="0.05" value="0.7">
+            </div>
+          </div>
+        </div>
+
+        <!-- Boss Key Emergency Flashy Spam Ad Overlay -->
+        <div id="boss-ad-overlay" class="boss-ad-overlay hidden">
+          <div class="neon-glow-border"></div>
+          <div class="flashy-ad-card">
+            <div class="flashy-badge-row">
+              <span class="flashy-badge hot">🔥 爆款限免</span>
+              <span class="flashy-badge gold">⚡ 秒杀特惠</span>
+              <span class="flashy-ad-close">✖</span>
+            </div>
+            <div class="flashy-main-title" id="flashy-ad-title">屠龙宝刀 点击就送！</div>
+            <div class="flashy-sub-title" id="flashy-ad-subtitle">首充1元送VIP12，装备全靠打，装备秒回收！</div>
+            <div class="flashy-action-box">
+              <span class="flashy-btn">立即领取 &gt;&gt;</span>
+              <span class="flashy-fine-print">广告 · 投资有风险 · 入市需谨慎</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Ad Closed Toast Notification -->
+        <div id="ad-closed-toast" class="ad-closed-toast hidden">
+          <span>广告已关闭（3秒后自动恢复）</span>
+        </div>
+      </div>
+
+      <!-- Resize Corner Handle -->
+      <div class="ad-resize-handle" id="ad-resize-handle" title="拖拽调整大小"></div>
+    </div>
+
+    <!-- Video Source Configuration Modal -->
+    <div id="video-source-modal" class="modal-backdrop hidden">
+      <div class="modal-card video-modal-card">
+        <div class="modal-header">
+          <h3>📺 视频广告源配置</h3>
+          <button type="button" class="modal-close-btn" id="close-video-modal-btn">×</button>
+        </div>
+
+        <div class="video-modal-tabs">
+          <button type="button" class="tab-btn active" data-tab="tab-local-file">本地文件</button>
+          <button type="button" class="tab-btn" data-tab="tab-server-videos">项目 videos/ 目录</button>
+          <button type="button" class="tab-btn" data-tab="tab-online-url">网络视频 URL</button>
+          <button type="button" class="tab-btn" data-tab="tab-ad-settings">广告与老板键样式</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Tab 1: Local File Picker -->
+          <div class="tab-pane active" id="tab-local-file">
+            <div class="file-drop-zone" id="file-drop-zone">
+              <div class="drop-icon">📁</div>
+              <p>点击选择电脑上的本地视频文件，或直接拖拽到此处</p>
+              <span class="drop-hint">支持 MP4, WebM, MKV, MOV 等常见格式，浏览器本地直读</span>
+              <input type="file" id="local-video-file-input" accept="video/*" class="hidden-file-input">
+              <button type="button" class="primary-btn" id="pick-local-file-btn">选择本地文件</button>
+            </div>
+          </div>
+
+          <!-- Tab 2: Server videos/ Directory -->
+          <div class="tab-pane" id="tab-server-videos">
+            <p class="tab-tip">放入项目根目录 <code>videos/</code> 文件夹的视频将自动列出，支持无缝流式拖拽快进：</p>
+            <div id="server-videos-list" class="server-videos-list">
+              <div class="empty-hint">正在扫描 videos/ 目录...</div>
+            </div>
+            <button type="button" class="secondary-btn refresh-btn" id="refresh-server-videos-btn">🔄 刷新列表</button>
+          </div>
+
+          <!-- Tab 3: Online URL -->
+          <div class="tab-pane" id="tab-online-url">
+            <div class="form-group">
+              <label for="online-video-url-input">输入在线直链视频 URL (MP4 / WebM / 流媒体):</label>
+              <input type="url" id="online-video-url-input" class="form-input" placeholder="https://example.com/video.mp4">
+            </div>
+            <button type="button" class="primary-btn" id="load-online-url-btn">载入在线视频</button>
+          </div>
+
+          <!-- Tab 4: Ad & Boss Style Settings -->
+          <div class="tab-pane" id="tab-ad-settings">
+            <div class="form-group">
+              <label for="ad-style-select">老板键触发时的闪光垃圾广告风格：</label>
+              <select id="ad-style-select" class="form-input">
+                <option value="flashy_game">💥 经典页游风（屠龙宝刀/装备回收/流光霓虹）</option>
+                <option value="tech_course">⚡ 架构师速成（3天99元AI全栈大模型高薪班）</option>
+                <option value="cloud_sale">🎁 云厂商大促（云服务器0元购/极速建站）</option>
+                <option value="vue_sponsor">🛍️ 官方商城风（Mall4j 企业开源商城高仿）</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="video-size-select">默认窗口尺寸：</label>
+              <select id="video-size-select" class="form-input">
+                <option value="small">小窗 (200px)</option>
+                <option value="normal">标准 (280px)</option>
+                <option value="large">大窗 (380px)</option>
+                <option value="xl">特大 (480px)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Quick Search Modal (⌘K) -->

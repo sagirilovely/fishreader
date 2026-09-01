@@ -328,6 +328,11 @@ class ConfigAccessorTest(unittest.TestCase):
         self.assertTrue(cfg.web_enabled)
         self.assertTrue(cfg.web_auto_open)
         self.assertEqual(cfg.web["theme"], "vue")
+        self.assertTrue(cfg.web_video_enabled)
+        self.assertEqual(cfg.web_video_position, "bottom_right")
+        self.assertEqual(cfg.web_video_default_size, "normal")
+        self.assertEqual(cfg.web_ad_style, "flashy_game")
+        self.assertTrue(cfg.web_auto_pause_on_boss)
 
     def test_web_validation(self):
         with self.assertRaises(ConfigError):
@@ -336,11 +341,27 @@ class ConfigAccessorTest(unittest.TestCase):
             self._config_with('[web]\ntheme = "unknown"')
         with self.assertRaises(ConfigError):
             self._config_with('[web]\ndisguise_mode = "unknown"')
+        with self.assertRaises(ConfigError):
+            self._config_with('[web]\nvideo_position = "center"')
+        with self.assertRaises(ConfigError):
+            self._config_with('[web]\nvideo_default_size = "huge"')
+        with self.assertRaises(ConfigError):
+            self._config_with('[web]\nad_style = "invalid"')
 
-        cfg = self._config_with('[web]\nenabled = false\nport = 9090\ntheme = "react"')
+        cfg = self._config_with(
+            '[web]\nenabled = false\nport = 9090\ntheme = "react"\n'
+            'video_enabled = false\nvideo_position = "sidebar"\n'
+            'video_default_size = "large"\nad_style = "tech_course"\n'
+            'auto_pause_on_boss = false'
+        )
         self.assertFalse(cfg.web_enabled)
         self.assertEqual(cfg.web["port"], 9090)
         self.assertEqual(cfg.web["theme"], "react")
+        self.assertFalse(cfg.web_video_enabled)
+        self.assertEqual(cfg.web_video_position, "sidebar")
+        self.assertEqual(cfg.web_video_default_size, "large")
+        self.assertEqual(cfg.web_ad_style, "tech_course")
+        self.assertFalse(cfg.web_auto_pause_on_boss)
 
     def test_reader_width_fraction(self):
         cfg = load_config(self.root / "d.toml", project_root=self.root)  # 30%

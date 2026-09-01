@@ -66,6 +66,10 @@ class DisguiseRequestHandler(BaseHTTPRequestHandler):
             self._handle_status()
         elif path == "/api/books":
             self._handle_books()
+        elif path == "/api/videos":
+            self._handle_videos_list()
+        elif path.startswith("/api/videos/"):
+            self._handle_video_stream(path)
         elif path.startswith("/api/real_docs"):
             self._handle_real_docs(path)
         elif path.startswith("/api/books/"):
@@ -96,6 +100,13 @@ class DisguiseRequestHandler(BaseHTTPRequestHandler):
             "theme": config.web.get("theme", "vue"),
             "themes": ["vue", "react", "rust", "python"],
             "disguise_modes": ["clean", "hybrid", "code_dense"],
+            "video": {
+                "enabled": config.web_video_enabled,
+                "position": config.web_video_position,
+                "default_size": config.web_video_default_size,
+                "ad_style": config.web_ad_style,
+                "auto_pause_on_boss": config.web_auto_pause_on_boss,
+            },
         }
         self._send_json(data)
 
@@ -250,6 +261,93 @@ class DisguiseRequestHandler(BaseHTTPRequestHandler):
 
         self._send_json({"ok": True, "saved": progress.get(book_id)})
 
+    def _handle_videos_list(self) -> None:
+        server: WebDisguiseServer = self.server.wrapper  # type: ignore[attr-defined]
+        videos = server.get_videos()
+        self._send_json(videos)
+
+    def _handle_video_stream(self, path: str) -> None:
+        server: WebDisguiseServer = self.server.wrapper  # type: ignore[attr-defined]
+        filename = urllib.parse.unquote(path[len("/api/videos/") :])
+        if not filename:
+            self._send_error("Missing video filename", HTTPStatus.BAD_REQUEST)
+            return
+
+        target = (server.videos_dir / filename).resolve()
+        try:
+            target.relative_to(server.videos_dir.resolve())
+        except ValueError:
+            self._send_error("Forbidden", HTTPStatus.FORBIDDEN)
+            return
+
+        if not target.is_file():
+            self._send_error("Video not found", HTTPStatus.NOT_FOUND)
+            return
+
+        file_size = target.stat().st_size
+        ctype, _ = mimetypes.guess_type(str(target))
+        if not ctype:
+            ctype = "video/mp4"
+
+        range_header = self.headers.get("Range")
+        if range_header and range_header.startswith("bytes="):
+            # Parse Range: bytes=start-end
+            range_val = range_header[len("bytes=") :].strip()
+            parts = range_val.split("-")
+            try:
+                start = int(parts[0]) if parts[0] else 0
+                end = int(parts[1]) if len(parts) > 1 and parts[1] else file_size - 1
+            except ValueError:
+                start = 0
+                end = file_size - 1
+
+            if start >= file_size or end >= file_size or start > end:
+                self.send_response(HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                self.send_header("Content-Range", f"bytes */{file_size}")
+                self.end_headers()
+                return
+
+            length = end - start + 1
+            self.send_response(HTTPStatus.PARTIAL_CONTENT)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{file_size}")
+            self.send_header("Content-Length", str(length))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+
+            try:
+                with open(target, "rb") as fh:
+                    fh.seek(start)
+                    remaining = length
+                    while remaining > 0:
+                        chunk_size = min(65536, remaining)
+                        data = fh.read(chunk_size)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+                        remaining -= len(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        else:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.end_headers()
+            try:
+                with open(target, "rb") as fh:
+                    while True:
+                        data = fh.read(65536)
+                        if not data:
+                            break
+                        self.wfile.write(data)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
     def _handle_static(self, path: str) -> None:
         server: WebDisguiseServer = self.server.wrapper  # type: ignore[attr-defined]
         static_dir = server.static_dir
@@ -309,6 +407,11 @@ class WebDisguiseServer:
         self.preferred_port = port or int(config.web.get("port", 8080))
         self.port = self.preferred_port
         self.static_dir = Path(__file__).resolve().parent / "static"
+        self.videos_dir = project_root / "videos"
+        try:
+            self.videos_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
 
         self._candidates: list[Candidate] | None = None
         self._book_cache: dict[str, Book] = {}
@@ -317,6 +420,25 @@ class WebDisguiseServer:
         self._server: ThreadingHTTPServer | None = None
         self._thread: threading.Thread | None = None
         self._running = False
+
+    def get_videos(self) -> list[dict[str, Any]]:
+        with self._lock:
+            if not self.videos_dir.is_dir():
+                return []
+            exts = {".mp4", ".webm", ".ogg", ".mov", ".mkv", ".m4v"}
+            items = []
+            for p in sorted(self.videos_dir.glob("*")):
+                if p.is_file() and p.suffix.lower() in exts and not p.name.startswith("."):
+                    items.append(
+                        {
+                            "id": p.name,
+                            "name": p.name,
+                            "size_bytes": p.stat().st_size,
+                            "fmt": p.suffix.lower().lstrip("."),
+                            "url": f"/api/videos/{urllib.parse.quote(p.name)}",
+                        }
+                    )
+            return items
 
     def get_progress_store(self) -> ProgressStore:
         with self._lock:

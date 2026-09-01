@@ -22,7 +22,10 @@ class MockServer:
         self.wrapper = wrapper
 
 
-def call_handler(server_wrapper: WebDisguiseServer, method: str, path: str, body: bytes = b"") -> tuple[int, dict[str, str], bytes]:
+from email.message import Message
+
+
+def call_handler(server_wrapper: WebDisguiseServer, method: str, path: str, body: bytes = b"", headers_dict: dict[str, str] | None = None) -> tuple[int, dict[str, str], bytes]:
     """Execute a request against DisguiseRequestHandler in-memory."""
     rfile = io.BytesIO(body)
     wfile = io.BytesIO()
@@ -37,10 +40,15 @@ def call_handler(server_wrapper: WebDisguiseServer, method: str, path: str, body
     handler.command = method
     handler.path = path
     handler.request_version = "HTTP/1.1"
-    handler.headers = MagicMock()
-    handler.headers.get.side_effect = lambda k, default=None: (
-        str(len(body)) if k.lower() == "content-length" else default
-    )
+
+    msg = Message()
+    if body:
+        msg["Content-Length"] = str(len(body))
+        msg["Content-Type"] = "application/json"
+    if headers_dict:
+        for k, v in headers_dict.items():
+            msg[k] = v
+    handler.headers = msg
     handler.close_connection = True
 
     if method == "GET":

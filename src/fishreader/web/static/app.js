@@ -80,7 +80,40 @@
     currentChapterIndex: 0,
     useDisguisedNaming: true,
     progress: {},
-    rawDocCache: {}
+    rawDocCache: {},
+    // Video & Ad State
+    adStyle: localStorage.getItem('fish_ad_style') || 'flashy_game',
+    videoSize: localStorage.getItem('fish_video_size') || 'normal',
+    videoDocked: localStorage.getItem('fish_video_docked') === 'true',
+    serverVideos: []
+  };
+
+  // --- Flashy Junk Web Ad Themes (Decoy when Boss Key is pressed) ---
+  const FLASHY_AD_THEMES = {
+    flashy_game: {
+      title: '🔥 屠龙宝刀 点击就送！',
+      subtitle: '首充1元送VIP12，爆率9.9，神装秒回收秒到账！',
+      btn: '立即开宝箱 >>',
+      badge: 'HOT 爆款页游'
+    },
+    tech_course: {
+      title: '⚡ 3天速成 Java / AI 架构师！',
+      subtitle: '年薪百万大模型实战训练营，99元限时秒杀，先到先得！',
+      btn: '抢占名额 >>',
+      badge: '限时 99 元'
+    },
+    cloud_sale: {
+      title: '🎁 云服务器 0 元免费抢！',
+      subtitle: '企业级 8核32G 独立带宽，首年仅需 0 元，极速建站上线！',
+      btn: '0元领取 >>',
+      badge: '双十一特惠'
+    },
+    vue_sponsor: {
+      title: 'Mall4j 企业级开源商城',
+      subtitle: '100% 源码交付 · 二开简单 · SpringBoot 3.x / 微服务架构 Gitee 15k Star',
+      btn: '查看在线演示 >>',
+      badge: '企业赞助'
+    }
   };
 
   // --- DOM Elements ---
@@ -116,13 +149,52 @@
     searchTrigger: document.getElementById('search-trigger'),
     searchModal: document.getElementById('search-modal'),
     modalSearchInput: document.getElementById('modal-search-input'),
-    searchResultsList: document.getElementById('search-results-list')
+    searchResultsList: document.getElementById('search-results-list'),
+    // Video Ad Elements
+    floatingAdWidget: document.getElementById('floating-ad-widget'),
+    adWidgetHeader: document.getElementById('ad-widget-header'),
+    adTitleLabel: document.getElementById('ad-title-label'),
+    adSourceBtn: document.getElementById('ad-source-btn'),
+    adSizeBtn: document.getElementById('ad-size-btn'),
+    adDockBtn: document.getElementById('ad-dock-btn'),
+    adCloseBtn: document.getElementById('ad-close-btn'),
+    adBodyContainer: document.getElementById('ad-body-container'),
+    adVideo: document.getElementById('ad-video-element'),
+    adPlaceholder: document.getElementById('ad-placeholder'),
+    adSelectVideoBtn: document.getElementById('ad-select-video-btn'),
+    adVideoControls: document.getElementById('ad-video-controls'),
+    videoSeekBar: document.getElementById('video-seek-bar'),
+    videoPlayBtn: document.getElementById('video-play-btn'),
+    videoTimeDisplay: document.getElementById('video-time-display'),
+    videoSpeedSelect: document.getElementById('video-speed-select'),
+    videoMuteBtn: document.getElementById('video-mute-btn'),
+    videoVolumeBar: document.getElementById('video-volume-bar'),
+    bossAdOverlay: document.getElementById('boss-ad-overlay'),
+    flashyAdTitle: document.getElementById('flashy-ad-title'),
+    flashyAdSubtitle: document.getElementById('flashy-ad-subtitle'),
+    adClosedToast: document.getElementById('ad-closed-toast'),
+    adResizeHandle: document.getElementById('ad-resize-handle'),
+    sidebarSponsorAnchor: document.getElementById('sidebar-sponsor-anchor'),
+    sidebarAdMock: document.getElementById('sidebar-ad-mock'),
+    // Video Source Modal
+    videoSourceModal: document.getElementById('video-source-modal'),
+    closeVideoModalBtn: document.getElementById('close-video-modal-btn'),
+    fileDropZone: document.getElementById('file-drop-zone'),
+    localVideoFileInput: document.getElementById('local-video-file-input'),
+    pickLocalFileBtn: document.getElementById('pick-local-file-btn'),
+    serverVideosList: document.getElementById('server-videos-list'),
+    refreshServerVideosBtn: document.getElementById('refresh-server-videos-btn'),
+    onlineVideoUrlInput: document.getElementById('online-video-url-input'),
+    loadOnlineUrlBtn: document.getElementById('load-online-url-btn'),
+    adStyleSelect: document.getElementById('ad-style-select'),
+    videoSizeSelect: document.getElementById('video-size-select')
   };
 
   // --- Initialization ---
   async function init() {
     applyThemeAndMode();
     bindEvents();
+    initVideoAd();
     await fetchInitialData();
   }
 
@@ -442,8 +514,24 @@
     elements.bossBanner.classList.toggle('hidden', !state.isBossMode);
 
     if (state.isBossMode) {
+      // 1. Pause video automatically
+      if (elements.adVideo && !elements.adVideo.paused) {
+        elements.adVideo.pause();
+        updatePlayButton();
+      }
+      // 2. Show Boss Flashing Decoy Ad
+      updateBossAdOverlay();
+      if (elements.bossAdOverlay) {
+        elements.bossAdOverlay.classList.remove('hidden');
+      }
+
       await renderBossMode();
     } else {
+      // Hide Boss Flashing Decoy Ad
+      if (elements.bossAdOverlay) {
+        elements.bossAdOverlay.classList.add('hidden');
+      }
+
       await loadChapter(state.currentChapterIndex);
     }
   }
@@ -462,6 +550,358 @@
     } catch (err) {
       console.error('Error fetching real docs for boss mode:', err);
     }
+  }
+
+  // --- Video & Floating Ad Disguise Manager ---
+  function initVideoAd() {
+    if (!elements.floatingAdWidget) return;
+
+    // Apply stored size & ad style
+    setVideoSize(state.videoSize);
+    setAdStyle(state.adStyle);
+    if (state.videoDocked) {
+      toggleVideoDock(true);
+    }
+
+    // Video Element Events
+    elements.adVideo.addEventListener('play', updatePlayButton);
+    elements.adVideo.addEventListener('pause', updatePlayButton);
+    elements.adVideo.addEventListener('timeupdate', updateVideoProgress);
+    elements.adVideo.addEventListener('loadedmetadata', onVideoLoadedMetadata);
+    elements.adVideo.addEventListener('volumechange', updateVolumeDisplay);
+
+    // Video Controls
+    elements.videoPlayBtn.addEventListener('click', toggleVideoPlay);
+    elements.adBodyContainer.addEventListener('click', (e) => {
+      if (e.target === elements.adVideo || e.target === elements.adBodyContainer) {
+        toggleVideoPlay();
+      }
+    });
+
+    elements.videoSeekBar.addEventListener('input', () => {
+      if (elements.adVideo.duration) {
+        const time = (elements.videoSeekBar.value / 100) * elements.adVideo.duration;
+        elements.adVideo.currentTime = time;
+      }
+    });
+
+    elements.videoSpeedSelect.addEventListener('change', (e) => {
+      elements.adVideo.playbackRate = parseFloat(e.target.value);
+    });
+
+    elements.videoMuteBtn.addEventListener('click', () => {
+      elements.adVideo.muted = !elements.adVideo.muted;
+      updateVolumeDisplay();
+    });
+
+    elements.videoVolumeBar.addEventListener('input', (e) => {
+      elements.adVideo.volume = parseFloat(e.target.value);
+      elements.adVideo.muted = false;
+      updateVolumeDisplay();
+    });
+
+    // Widget Header Buttons
+    elements.adSourceBtn.addEventListener('click', openVideoSourceModal);
+    elements.adSelectVideoBtn.addEventListener('click', openVideoSourceModal);
+    elements.adSizeBtn.addEventListener('click', cycleVideoSize);
+    elements.adDockBtn.addEventListener('click', () => toggleVideoDock(!state.videoDocked));
+    elements.adCloseBtn.addEventListener('click', closeAdToast);
+
+    // Modal Events
+    elements.closeVideoModalBtn.addEventListener('click', closeVideoSourceModal);
+    elements.videoSourceModal.addEventListener('click', (e) => {
+      if (e.target === elements.videoSourceModal) closeVideoSourceModal();
+    });
+
+    // Modal Tabs
+    const tabBtns = elements.videoSourceModal.querySelectorAll('.tab-btn');
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        tabBtns.forEach(b => b.classList.remove('active'));
+        elements.videoSourceModal.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        const target = elements.videoSourceModal.querySelector(`#${btn.dataset.tab}`);
+        if (target) target.classList.add('active');
+        if (btn.dataset.tab === 'tab-server-videos') {
+          fetchServerVideos();
+        }
+      });
+    });
+
+    // Local File Picker
+    elements.pickLocalFileBtn.addEventListener('click', () => elements.localVideoFileInput.click());
+    elements.localVideoFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        loadVideoFile(e.target.files[0]);
+        closeVideoSourceModal();
+      }
+    });
+
+    // Drag and Drop
+    elements.fileDropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      elements.fileDropZone.classList.add('dragover');
+    });
+    elements.fileDropZone.addEventListener('dragleave', () => {
+      elements.fileDropZone.classList.remove('dragover');
+    });
+    elements.fileDropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      elements.fileDropZone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        loadVideoFile(e.dataTransfer.files[0]);
+        closeVideoSourceModal();
+      }
+    });
+
+    // Refresh Server Videos
+    elements.refreshServerVideosBtn.addEventListener('click', fetchServerVideos);
+
+    // Online URL
+    elements.loadOnlineUrlBtn.addEventListener('click', () => {
+      const url = elements.onlineVideoUrlInput.value.trim();
+      if (url) {
+        loadVideoUrl(url, '网络视频');
+        closeVideoSourceModal();
+      }
+    });
+
+    // Ad Style & Size Settings
+    elements.adStyleSelect.value = state.adStyle;
+    elements.adStyleSelect.addEventListener('change', (e) => {
+      setAdStyle(e.target.value);
+    });
+
+    elements.videoSizeSelect.value = state.videoSize;
+    elements.videoSizeSelect.addEventListener('change', (e) => {
+      setVideoSize(e.target.value);
+    });
+
+    // Drag to Reposition
+    setupVideoWidgetDrag();
+    setupVideoWidgetResize();
+  }
+
+  function updatePlayButton() {
+    if (!elements.videoPlayBtn) return;
+    elements.videoPlayBtn.textContent = elements.adVideo.paused ? '▶' : '⏸';
+  }
+
+  function toggleVideoPlay() {
+    if (!elements.adVideo.src && !elements.adVideo.currentSrc) {
+      openVideoSourceModal();
+      return;
+    }
+    if (elements.adVideo.paused) {
+      elements.adVideo.play().catch(() => {});
+    } else {
+      elements.adVideo.pause();
+    }
+    updatePlayButton();
+  }
+
+  function updateVideoProgress() {
+    if (!elements.adVideo.duration) return;
+    const pct = (elements.adVideo.currentTime / elements.adVideo.duration) * 100;
+    elements.videoSeekBar.value = pct;
+    elements.videoTimeDisplay.textContent = `${formatTime(elements.adVideo.currentTime)} / ${formatTime(elements.adVideo.duration)}`;
+  }
+
+  function onVideoLoadedMetadata() {
+    elements.adPlaceholder.classList.add('hidden');
+    elements.adVideoControls.classList.remove('hidden');
+    updateVideoProgress();
+    elements.adVideo.play().catch(() => {});
+    updatePlayButton();
+  }
+
+  function updateVolumeDisplay() {
+    if (elements.adVideo.muted || elements.adVideo.volume === 0) {
+      elements.videoMuteBtn.textContent = '🔇';
+    } else if (elements.adVideo.volume < 0.5) {
+      elements.videoMuteBtn.textContent = '🔉';
+    } else {
+      elements.videoMuteBtn.textContent = '🔊';
+    }
+    elements.videoVolumeBar.value = elements.adVideo.muted ? 0 : elements.adVideo.volume;
+  }
+
+  function formatTime(secs) {
+    if (isNaN(secs)) return '00:00';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+
+  function loadVideoFile(file) {
+    const url = URL.createObjectURL(file);
+    elements.adVideo.src = url;
+    elements.adTitleLabel.textContent = file.name.slice(0, 16);
+    elements.adPlaceholder.classList.add('hidden');
+  }
+
+  function loadVideoUrl(url, name) {
+    elements.adVideo.src = url;
+    elements.adTitleLabel.textContent = name || '赞助视频';
+    elements.adPlaceholder.classList.add('hidden');
+  }
+
+  async function fetchServerVideos() {
+    elements.serverVideosList.innerHTML = '<div class="empty-hint">正在读取 videos/ 目录...</div>';
+    try {
+      const res = await fetch('/api/videos');
+      if (!res.ok) throw new Error('API error');
+      state.serverVideos = await res.json();
+      renderServerVideosList();
+    } catch (err) {
+      elements.serverVideosList.innerHTML = `<div class="empty-hint">读取失败: ${err.message}</div>`;
+    }
+  }
+
+  function renderServerVideosList() {
+    elements.serverVideosList.innerHTML = '';
+    if (!state.serverVideos.length) {
+      elements.serverVideosList.innerHTML = '<div class="empty-hint">videos/ 目录暂无视频文件，请将 .mp4 / .webm 放入该目录</div>';
+      return;
+    }
+    state.serverVideos.forEach(v => {
+      const item = document.createElement('div');
+      item.className = 'server-video-item';
+      const sizeMb = (v.size_bytes / (1024 * 1024)).toFixed(1);
+      item.innerHTML = `
+        <span class="video-name">🎬 ${escapeHtml(v.name)}</span>
+        <span class="video-size">${sizeMb} MB</span>
+      `;
+      item.onclick = () => {
+        loadVideoUrl(v.url, v.name);
+        closeVideoSourceModal();
+      };
+      elements.serverVideosList.appendChild(item);
+    });
+  }
+
+  function setVideoSize(size) {
+    state.videoSize = size;
+    localStorage.setItem('fish_video_size', size);
+    ['size-small', 'size-normal', 'size-large', 'size-xl'].forEach(c => elements.floatingAdWidget.classList.remove(c));
+    elements.floatingAdWidget.classList.add(`size-${size}`);
+    elements.floatingAdWidget.style.width = '';
+    elements.floatingAdWidget.style.height = '';
+  }
+
+  function cycleVideoSize() {
+    const sizes = ['small', 'normal', 'large', 'xl'];
+    const idx = sizes.indexOf(state.videoSize);
+    const next = sizes[(idx + 1) % sizes.length];
+    setVideoSize(next);
+  }
+
+  function toggleVideoDock(docked) {
+    state.videoDocked = docked;
+    localStorage.setItem('fish_video_docked', String(docked));
+    if (docked) {
+      elements.floatingAdWidget.classList.remove('pos-bottom-right');
+      elements.floatingAdWidget.classList.add('pos-sidebar');
+      elements.sidebarSponsorAnchor.appendChild(elements.floatingAdWidget);
+      elements.sidebarAdMock.classList.add('hidden');
+    } else {
+      elements.floatingAdWidget.classList.remove('pos-sidebar');
+      elements.floatingAdWidget.classList.add('pos-bottom-right');
+      document.body.appendChild(elements.floatingAdWidget);
+      elements.sidebarAdMock.classList.remove('hidden');
+    }
+  }
+
+  function setAdStyle(style) {
+    state.adStyle = style;
+    localStorage.setItem('fish_ad_style', style);
+    elements.floatingAdWidget.setAttribute('data-ad-style', style);
+    updateBossAdOverlay();
+  }
+
+  function updateBossAdOverlay() {
+    const theme = FLASHY_AD_THEMES[state.adStyle] || FLASHY_AD_THEMES.flashy_game;
+    elements.flashyAdTitle.textContent = theme.title;
+    elements.flashyAdSubtitle.textContent = theme.subtitle;
+    const badge = elements.bossAdOverlay.querySelector('.flashy-badge.hot');
+    if (badge) badge.textContent = theme.badge;
+    const btn = elements.bossAdOverlay.querySelector('.flashy-btn');
+    if (btn) btn.textContent = theme.btn;
+  }
+
+  function closeAdToast() {
+    elements.adClosedToast.classList.remove('hidden');
+    setTimeout(() => {
+      elements.adClosedToast.classList.add('hidden');
+    }, 3000);
+  }
+
+  function openVideoSourceModal() {
+    elements.videoSourceModal.classList.remove('hidden');
+  }
+
+  function closeVideoSourceModal() {
+    elements.videoSourceModal.classList.add('hidden');
+  }
+
+  function setupVideoWidgetDrag() {
+    let isDragging = false;
+    let startX, startY, initialLeft, initialTop;
+
+    elements.adWidgetHeader.addEventListener('mousedown', (e) => {
+      if (state.videoDocked) return;
+      if (['BUTTON', 'SELECT', 'INPUT'].includes(e.target.tagName)) return;
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = elements.floatingAdWidget.getBoundingClientRect();
+      initialLeft = rect.left;
+      initialTop = rect.top;
+
+      // Unset bottom/right to allow absolute positioning
+      elements.floatingAdWidget.style.right = 'auto';
+      elements.floatingAdWidget.style.bottom = 'auto';
+      elements.floatingAdWidget.style.left = `${initialLeft}px`;
+      elements.floatingAdWidget.style.top = `${initialTop}px`;
+      e.preventDefault();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      elements.floatingAdWidget.style.left = `${Math.max(10, initialLeft + dx)}px`;
+      elements.floatingAdWidget.style.top = `${Math.max(10, initialTop + dy)}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+  }
+
+  function setupVideoWidgetResize() {
+    let isResizing = false;
+    let startX, startW;
+
+    elements.adResizeHandle.addEventListener('mousedown', (e) => {
+      if (state.videoDocked) return;
+      isResizing = true;
+      startX = e.clientX;
+      startW = elements.floatingAdWidget.offsetWidth;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!isResizing) return;
+      const dx = startX - e.clientX;
+      const newW = Math.max(180, Math.min(800, startW + dx));
+      elements.floatingAdWidget.style.width = `${newW}px`;
+    });
+
+    window.addEventListener('mouseup', () => {
+      isResizing = false;
+    });
   }
 
   // --- Progress Saving ---
@@ -636,6 +1076,9 @@
       } else if (e.key === 'b' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
         e.preventDefault();
         toggleBossMode();
+      } else if (e.key === 'v' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+        e.preventDefault();
+        toggleVideoPlay();
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         if (elements.searchModal.classList.contains('hidden')) {

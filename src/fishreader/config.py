@@ -26,6 +26,9 @@ STATUS_LINES = ("minimal", "full")
 LOG_STYLES = ("agent", "vite", "npm", "git")
 WEB_THEMES = ("vue", "react", "rust", "python")
 DISGUISE_MODES = ("clean", "hybrid", "code_dense")
+VIDEO_POSITIONS = ("bottom_right", "sidebar")
+VIDEO_SIZES = ("small", "normal", "large", "xl")
+AD_STYLES = ("flashy_game", "tech_course", "cloud_sale", "vue_sponsor")
 
 # Spacing is expressed in *rows*, not in whole blank lines: a terminal can
 # only draw whole rows, so a fractional value is spread over the page —
@@ -84,6 +87,11 @@ DEFAULTS: dict = {
         "auto_open": True,
         "theme": "vue",
         "disguise_mode": "hybrid",
+        "video_enabled": True,
+        "video_position": "bottom_right",
+        "video_default_size": "normal",
+        "ad_style": "flashy_game",
+        "auto_pause_on_boss": True,
     },
     "progress": {
         "file": ".fish_progress.json",
@@ -127,6 +135,11 @@ host = "127.0.0.1"                 # 监听地址
 auto_open = true                   # 启动时是否自动在默认浏览器打开
 theme = "vue"                      # 默认技术文档主题: vue | react | rust | python
 disguise_mode = "hybrid"           # 网页排版伪装度: clean | hybrid | code_dense
+video_enabled = true               # 网页右下角悬浮广告/视频播放伪装组件
+video_position = "bottom_right"    # bottom_right (右下角悬浮) | sidebar (侧边栏内嵌)
+video_default_size = "normal"      # small | normal | large | xl
+ad_style = "flashy_game"           # 垃圾广告伪装样式: flashy_game | tech_course | cloud_sale | vue_sponsor
+auto_pause_on_boss = true          # 按下老板键时自动暂停视频并切换为高亮广告
 
 [theme]
 log_level_color = true             # 日志级别着色（INFO/WARN/OK）
@@ -274,6 +287,19 @@ def _validate(raw: dict) -> None:
             )
         if not isinstance(web.get("auto_open", True), bool):
             raise ConfigError("web.auto_open must be a boolean")
+        if not isinstance(web.get("video_enabled", True), bool):
+            raise ConfigError("web.video_enabled must be a boolean")
+        v_pos = web.get("video_position", "bottom_right")
+        if v_pos not in VIDEO_POSITIONS:
+            raise ConfigError(f"web.video_position must be one of {VIDEO_POSITIONS}, got {v_pos!r}")
+        v_size = web.get("video_default_size", "normal")
+        if v_size not in VIDEO_SIZES:
+            raise ConfigError(f"web.video_default_size must be one of {VIDEO_SIZES}, got {v_size!r}")
+        ad_style = web.get("ad_style", "flashy_game")
+        if ad_style not in AD_STYLES:
+            raise ConfigError(f"web.ad_style must be one of {AD_STYLES}, got {ad_style!r}")
+        if not isinstance(web.get("auto_pause_on_boss", True), bool):
+            raise ConfigError("web.auto_pause_on_boss must be a boolean")
 
 
 @dataclass
@@ -313,6 +339,26 @@ class Config:
     @property
     def web_auto_open(self) -> bool:
         return bool(self.web.get("auto_open", True))
+
+    @property
+    def web_video_enabled(self) -> bool:
+        return bool(self.web.get("video_enabled", True))
+
+    @property
+    def web_video_position(self) -> str:
+        return str(self.web.get("video_position", "bottom_right"))
+
+    @property
+    def web_video_default_size(self) -> str:
+        return str(self.web.get("video_default_size", "normal"))
+
+    @property
+    def web_ad_style(self) -> str:
+        return str(self.web.get("ad_style", "flashy_game"))
+
+    @property
+    def web_auto_pause_on_boss(self) -> bool:
+        return bool(self.web.get("auto_pause_on_boss", True))
 
     @property
     def progress(self) -> dict:
