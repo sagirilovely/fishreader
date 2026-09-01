@@ -16,6 +16,9 @@ if str(_SRC) not in sys.path:
 from fishreader.config import (  # noqa: E402
     DEFAULT_CONFIG_TEXT,
     FONT_SIZE_SPACING,
+    SPACING_MAX,
+    SPACING_OPTIONS,
+    SPACING_STEP,
     Config,
     ConfigError,
     load_config,
@@ -145,7 +148,10 @@ class ConfigValidationTest(unittest.TestCase):
         ('[reader]\nnovel_style = "html"', "novel_style"),
         ('[reader]\nreader_position = "top"', "reader_position"),
         ('[reader]\nline_spacing = 5', "line_spacing"),
-        ('[reader]\nline_spacing = 1.5', "line_spacing"),
+        ('[reader]\nline_spacing = 2.25', "line_spacing"),
+        ('[reader]\nline_spacing = -0.25', "line_spacing"),
+        ('[reader]\nline_spacing = "1"', "line_spacing"),
+        ('[reader]\nline_spacing = true', "line_spacing"),
         ('[reader]\nparagraph_spacing = -1', "paragraph_spacing"),
         ('[disguise]\nlog_interval_min = 2.0\nlog_interval_max = 1.0',
          "log_interval"),
@@ -200,6 +206,26 @@ class ConfigValidationTest(unittest.TestCase):
         cfg = load_config(p, project_root=self.root)
         self.assertEqual(cfg.disguise["log_style"], "agent")
 
+    def _loaded(self, body: str) -> Config:
+        p = _write_toml(self.root, "spacing.toml", body)
+        return load_config(p, project_root=self.root)
+
+    def test_fractional_spacing_accepted(self):
+        """Spacing is a row count, so fractions must survive validation."""
+        for value in (0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.0):
+            with self.subTest(value=value):
+                cfg = self._loaded(f"[reader]\nline_spacing = {value}")
+                self.assertEqual(cfg.reader["line_spacing"], float(value))
+                cfg = self._loaded(f"[reader]\nparagraph_spacing = {value}")
+                self.assertEqual(cfg.reader["paragraph_spacing"], float(value))
+
+    def test_off_grid_spacing_snapped(self):
+        # hand-written values land on the 0.25 grid the settings menu cycles
+        cfg = self._loaded("[reader]\nline_spacing = 0.3")
+        self.assertEqual(cfg.reader["line_spacing"], 0.25)
+        cfg = self._loaded("[reader]\nparagraph_spacing = 1.9")
+        self.assertEqual(cfg.reader["paragraph_spacing"], 2.0)
+
     def test_reader_positions_accepted(self):
         for pos in ("left", "right", "bottom"):
             with self.subTest(pos=pos):
@@ -239,6 +265,24 @@ class ConfigAccessorTest(unittest.TestCase):
         self.assertEqual(cfg.effective_spacing(), (2, 0))
         cfg = self._config_with('[reader]\nfont_size = "large"\nparagraph_spacing = 1')
         self.assertEqual(cfg.effective_spacing(), (0, 1))
+
+    def test_effective_spacing_fractional_override(self):
+        # 0.25 is the tightest explicit setting available from the menu
+        cfg = self._config_with(
+            '[reader]\nfont_size = "large"\nline_spacing = 0.25\nparagraph_spacing = 0.25'
+        )
+        self.assertEqual(cfg.effective_spacing(), (0.25, 0.25))
+        # still finer than the old integer-only minimum of 1
+        cfg = self._config_with('[reader]\nfont_size = "large"\nline_spacing = 1')
+        self.assertEqual(cfg.effective_spacing(), (1.0, 0.0))
+
+    def test_spacing_options_cover_the_whole_range(self):
+        self.assertEqual(SPACING_OPTIONS[0], 0.0)
+        self.assertEqual(SPACING_OPTIONS[1], SPACING_STEP)
+        self.assertEqual(SPACING_OPTIONS[-1], SPACING_MAX)
+        for option in SPACING_OPTIONS:
+            cfg = self._config_with(f"[reader]\nline_spacing = {option}")
+            self.assertEqual(cfg.reader["line_spacing"], option)
 
     def test_reader_width_columns(self):
         cfg = load_config(self.root / "d.toml", project_root=self.root)  # 30%

@@ -49,6 +49,40 @@ class FishAppSmokeTest(unittest.IsolatedAsyncioTestCase):
                 reloaded = load_config(root / "fish.toml", project_root=root)
                 self.assertEqual(reloaded.reader["font_size"], "large")
 
+    async def test_line_spacing_steps_finer_than_one_blank_line(self):
+        """The menu must offer sub-row steps (0.25) and persist them."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "books").mkdir()
+            (root / "books" / "novel.txt").write_text(
+                "第一章 测试\n\n" + "正文内容。" * 60 + "\n",
+                encoding="utf-8",
+            )
+            cfg = load_config(root / "fish.toml", project_root=root)
+            cfg.raw["reader"]["line_spacing"] = 1.0
+            cfg.raw["reader"]["paragraph_spacing"] = 1.0
+            app = FishApp(cfg, root)
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.press("escape")  # close the library picker
+                app.open_book(app.candidates[0].id)
+                await pilot.pause()
+                loose = app._visible_lines()
+
+                await pilot.press("s")
+                await pilot.press("down", "down", "down")  # -> line spacing row
+                await pilot.press("left", "left", "left")  # 1 -> 0.75 -> 0.5 -> 0.25
+                await pilot.press("escape")
+
+                self.assertEqual(cfg.reader["line_spacing"], 0.25)
+                self.assertEqual(app._line_spacing, 0.25)
+                self.assertGreater(app._visible_lines(), loose)
+                # the pane really is rendered with the fractional spacing
+                rendered = _plain(app.query_one("#reader-pane", Static))
+                self.assertGreater(len(rendered.splitlines()), loose)
+
+                reloaded = load_config(root / "fish.toml", project_root=root)
+                self.assertEqual(reloaded.reader["line_spacing"], 0.25)
+
     async def test_boss_key_works_while_settings_open(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

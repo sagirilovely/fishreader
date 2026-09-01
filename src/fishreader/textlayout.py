@@ -136,6 +136,162 @@ class Page:
     total_lines: int = 0
 
 
+def spacing_rows(item_count: int, spacing: float) -> int:
+    """Total blank rows added between `item_count` items at `spacing`.
+
+    Spacing is fractional (e.g. 0.25 rows per line). Terminals can only draw
+    whole rows, so the fraction is spread over the page: the blank rows are
+    distributed as evenly as possible, which makes the *total* exactly
+    floor(item_count * spacing) — the average gap is still `spacing`.
+    """
+    if spacing <= 0 or item_count <= 0:
+        return 0
+    return int(item_count * spacing + 1e-9)
+
+
+def blank_rows_after(count: int, spacing: float) -> list[int]:
+    """Blank rows to insert after each of `count` items.
+
+    `blank_rows_after(4, 0.25) == [0, 0, 0, 1]`: one blank row every four
+    lines. Summing the list yields spacing_rows(count, spacing).
+    """
+    if spacing <= 0 or count <= 0:
+        return [0] * count
+    out: list[int] = []
+    previous = 0
+    for i in range(1, count + 1):
+        total = int(i * spacing + 1e-9)
+        out.append(total - previous)
+        previous = total
+    return out
+
+
+def fit_lines(box_height: int, spacing: float) -> int:
+    """How many content lines fit in `box_height` terminal rows.
+
+    Exact (not an approximation): finds the largest n with
+    n + spacing_rows(n, spacing) <= box_height.
+    """
+    if box_height < 1:
+        return 1
+    if spacing <= 0:
+        return box_height
+    n = int(box_height / (1 + spacing))
+    n = max(1, min(n, box_height))
+    while n > 1 and n + spacing_rows(n, spacing) > box_height:
+        n -= 1
+    while n + 1 + spacing_rows(n + 1, spacing) <= box_height:
+        n += 1
+    return max(1, n)
+
+
+def fit_page_rows(
+    lines: list[str],
+    start: int,
+    height: int,
+    line_spacing: float = 0,
+    paragraph_spacing: float = 0,
+    chrome_rows: int = 0,
+) -> int:
+    """How many source lines starting at `start` fit in `height` screen rows.
+
+    Counts every row the renderer will actually emit: one per source line,
+    plus the blank rows spread by line/paragraph spacing, plus the style
+    chrome. Paging has to measure the page in *rows* — a line count that
+    only knows about line_spacing lets paragraph spacing (and the docstring
+    markers) push the page past the bottom of the pane, where
+    `overflow-y: hidden` silently eats the tail. The tail is then never
+    shown, because the next page starts after it: that is exactly what makes
+    page N+1 look disconnected from page N.
+    """
+    total = len(lines)
+    if total == 0:
+        return 0
+    start = max(0, min(start, total - 1))
+    budget = height - chrome_rows
+    if budget < 1:
+        return 1
+    content = 0
+    breaks = 0
+    prev_nonempty = False
+    i = start
+    while i < total:
+        raw = lines[i]
+        # mirrors decorate_lines(): a break is a blank line *after* content
+        is_break = raw == "" and prev_nonempty and paragraph_spacing > 0
+        next_content = content if raw == "" else content + 1
+        next_breaks = breaks + 1 if is_break else breaks
+        rows = (
+            (i - start + 1)
+            + spacing_rows(next_content, line_spacing)
+            + spacing_rows(next_breaks, paragraph_spacing)
+        )
+        if rows > budget and i > start:
+            break  # the page is full; at least the first line always fits
+        content = next_content
+        breaks = next_breaks
+        prev_nonempty = raw != ""
+        i += 1
+    return max(1, min(i - start, total - start))
+
+
+def _page_end(lines, start, height, line_spacing, paragraph_spacing, chrome_rows) -> int:
+    """First source line *after* the page starting at `start`."""
+    return start + fit_page_rows(
+        lines, start, height, line_spacing, paragraph_spacing, chrome_rows
+    )
+
+
+def fit_page_start_before(
+    lines: list[str],
+    limit: int,
+    height: int,
+    line_spacing: float = 0,
+    paragraph_spacing: float = 0,
+    chrome_rows: int = 0,
+) -> int:
+    """Start of the page that ends at (or just before) `limit`.
+
+    Inverse of forward paging: `fit_page_rows` from the returned index lands
+    back on `limit`, so ←/→ walk the exact same page boundaries.
+    """
+    total = len(lines)
+    if total == 0 or limit <= 0:
+        return 0
+    limit = min(limit, total)
+    lo, hi = 0, limit - 1
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if _page_end(lines, mid, height, line_spacing, paragraph_spacing, chrome_rows) <= limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
+def fit_page_start_last(
+    lines: list[str],
+    height: int,
+    line_spacing: float = 0,
+    paragraph_spacing: float = 0,
+    chrome_rows: int = 0,
+) -> int:
+    """Start of the last page of `lines` (used when paging into a prev chapter)."""
+    total = len(lines)
+    if total == 0:
+        return 0
+    if _page_end(lines, 0, height, line_spacing, paragraph_spacing, chrome_rows) >= total:
+        return 0
+    lo, hi = 0, total - 1
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if _page_end(lines, mid, height, line_spacing, paragraph_spacing, chrome_rows) >= total:
+            hi = mid
+        else:
+            lo = mid + 1
+    return lo
+
+
 def chapter_index_at(chapters: list, char_offset: int) -> int:
     """Index of the chapter containing char_offset (binary search)."""
     lo, hi = 0, len(chapters)
@@ -154,7 +310,7 @@ def paginate(
     start_char: int,
     box_width: int,
     box_height: int,
-    line_spacing: int = 0,
+    line_spacing: float = 0,
 ) -> Page:
     """Produce one page of `box_height` visible lines starting at start_char.
 
@@ -172,7 +328,7 @@ def paginate(
     if start_char >= total:
         return Page([], start_char, start_char, ci, eof=True, total_lines=total)
 
-    visible = max(1, box_height // (1 + line_spacing))
+    visible = fit_lines(box_height, line_spacing)
 
     # Only wrap what a single page can hold: each wrapped line consumes at
     # most width+1 source characters, so this cap always yields >= visible

@@ -21,18 +21,33 @@ from fishreader.config import (
     LOG_STYLES,
     NOVEL_STYLES,
     READER_POSITIONS,
+    SPACING_OPTIONS,
     Config,
+    ConfigError,
     apply_toml_update,
 )
 from fishreader.fakefeed import FakeFeed
 from fishreader.library import Candidate, load_book, scan_library
 from fishreader.models import Book
 from fishreader.state import ProgressStore
-from fishreader.textlayout import Page, wrap_text_with_offsets
+from fishreader.textlayout import (
+    Page,
+    fit_lines,
+    fit_page_rows,
+    fit_page_start_before,
+    fit_page_start_last,
+    wrap_text_with_offsets,
+)
 from fishreader.widgets.agent_log import AgentLog
 from fishreader.widgets.chapter_modal import ChapterModal
 from fishreader.widgets.library_modal import LibraryModal
-from fishreader.widgets.reader_pane import FONT_WIDTH_BASIS, ReaderPane
+from fishreader.widgets.reader_pane import (
+    FONT_WIDTH_BASIS,
+    PANE_PADDING_WIDTH,
+    STYLE_PREFIX_WIDTH,
+    ReaderPane,
+    chrome_rows,
+)
 from fishreader.widgets.settings_modal import Row, SettingsModal
 
 MIN_TERMINAL_WIDTH = 40
@@ -237,8 +252,13 @@ class FishApp(App[None]):
             self.reader_cols = max(8, term_w - 2)
         else:
             self.reader_cols = self.config.reader_width_columns(term_w)
-        basis = FONT_WIDTH_BASIS.get(self.config.reader["font_size"], 2)
-        self.wrap_width = max(4, self.reader_cols - basis)
+        basis = FONT_WIDTH_BASIS.get(self.config.reader["font_size"], 0)
+        # Reserve the pane padding and the "- "/"# " style prefix: otherwise
+        # the decorated line is wider than the pane and gets re-wrapped into
+        # two rows, growing every page past the bottom of the pane.
+        self.wrap_width = max(
+            4, self.reader_cols - PANE_PADDING_WIDTH - STYLE_PREFIX_WIDTH - basis
+        )
         self._line_spacing, self._paragraph_spacing = self.config.effective_spacing()
         self._term_height = term_h
         # clear wrap cache: geometry changed
@@ -259,12 +279,65 @@ class FishApp(App[None]):
             if main.children[0] is col:
                 main.move_child(col, after=log)
 
-    def _visible_lines(self, height: int | None = None) -> int:
-        h = max(1, (height or self._term_height or self.size.height) - 2)
+    def _box_height(self, height: int | None = None) -> int:
+        """Rows available to the reader pane.
+
+        -3: title bar + status bar + the reader column's own 1-line header.
+        """
+        h = max(1, (height or self._term_height or self.size.height) - 3)
         if self.config.reader["reader_position"] == "bottom":
             # #reader-col is 30% of the main area, minus the 1-line header
             h = max(1, int(h * 0.30) - 1)
-        return max(1, h // (1 + self._line_spacing))
+        return h
+
+    def _chrome_rows(self) -> int:
+        return chrome_rows(self.config.novel_style)
+
+    def _visible_lines(
+        self,
+        height: int | None = None,
+        lines: list[str] | None = None,
+        start: int = 0,
+        reserve_rows: int = 0,
+    ) -> int:
+        """Source lines that fit on one screen.
+
+        With `lines` given the count is exact — it accounts for line *and*
+        paragraph spacing plus the style chrome. Without them it falls back
+        to a line-spacing-only estimate (used before a chapter is wrapped).
+        """
+        h = max(1, self._box_height(height) - reserve_rows)
+        if lines is None:
+            return fit_lines(h, self._line_spacing)
+        return fit_page_rows(
+            lines,
+            start,
+            h,
+            self._line_spacing,
+            self._paragraph_spacing,
+            self._chrome_rows(),
+        )
+
+    def _prev_page_start(self, lines: list[str], height: int | None = None) -> int:
+        """Start of the page preceding `self.line_index` (exact inverse of →)."""
+        return fit_page_start_before(
+            lines,
+            self.line_index,
+            self._box_height(height),
+            self._line_spacing,
+            self._paragraph_spacing,
+            self._chrome_rows(),
+        )
+
+    def _last_page_start(self, lines: list[str], height: int | None = None) -> int:
+        """Start of the final page of a chapter (paging into a prev chapter)."""
+        return fit_page_start_last(
+            lines,
+            self._box_height(height),
+            self._line_spacing,
+            self._paragraph_spacing,
+            self._chrome_rows(),
+        )
 
     # -- chapter wrap cache ----------------------------------------------------
 
@@ -350,11 +423,16 @@ class FishApp(App[None]):
             pane.set_page(Page([], 0, 0, self.chapter_index, eof=True))
             self._update_statusbar()
             return
-        visible = self._visible_lines(h)
         self.line_index = min(self.line_index, len(lines) - 1)
         start = self.line_index
+        src = [ln for ln, _ in lines]
+        visible = self._visible_lines(h, src, start)
+        last_chapter = self.chapter_index == len(book.chapters) - 1
+        if last_chapter and start + visible >= len(lines):
+            # keep one row free so the "-- EOF --" marker is not clipped
+            visible = self._visible_lines(h, src, start, reserve_rows=1)
         page_lines = lines[start : start + visible]
-        eof = self.chapter_index == len(book.chapters) - 1 and start + visible >= len(lines)
+        eof = last_chapter and start + visible >= len(lines)
         first_offset = page_lines[0][1] if page_lines else lines[0][1]
         page = Page(
             lines=[ln for ln, _ in page_lines],
@@ -413,7 +491,8 @@ class FishApp(App[None]):
             return
         book = self.current
         lines = self._chapter_lines(book, self.chapter_index, self.wrap_width)
-        visible = self._visible_lines()
+        src = [ln for ln, _ in lines]
+        visible = self._visible_lines(lines=src, start=self.line_index)
         if self.line_index + visible < len(lines):
             self.line_index += visible
         elif self.chapter_index + 1 < len(book.chapters):
@@ -427,13 +506,13 @@ class FishApp(App[None]):
         if self.current is None or not self.current.readable:
             return
         book = self.current
-        visible = self._visible_lines()
-        if self.line_index - visible >= 0:
-            self.line_index -= visible
+        if self.line_index > 0:
+            lines = self._chapter_lines(book, self.chapter_index, self.wrap_width)
+            self.line_index = self._prev_page_start([ln for ln, _ in lines])
         elif self.chapter_index > 0:
             self.chapter_index -= 1
             lines = self._chapter_lines(book, self.chapter_index, self.wrap_width)
-            self.line_index = max(0, len(lines) - visible)
+            self.line_index = self._last_page_start([ln for ln, _ in lines])
         else:
             self.line_index = 0
         self._render()
@@ -519,13 +598,29 @@ class FishApp(App[None]):
         )
 
     def _setting_rows(self) -> list[Row]:
-        spacing_labels = {0: "auto"}
+        # 0 means "follow font_size"; every other step is a literal row count,
+        # so 0.25 is the tightest setting available (one blank row per 4 lines).
+        spacing_labels = {0.0: "auto"}
+        for value in SPACING_OPTIONS[1:]:
+            spacing_labels[value] = f"{value:g}"
         return [
             ("reader", "font_size", "font size", list(FONT_SIZES), {}),
             ("reader", "reader_position", "reader position", list(READER_POSITIONS), {}),
             ("reader", "reader_width", "reader width", ["25%", "30%", "35%", "40%"], {}),
-            ("reader", "line_spacing", "line spacing", [0, 1, 2], spacing_labels),
-            ("reader", "paragraph_spacing", "paragraph spacing", [0, 1, 2], spacing_labels),
+            (
+                "reader",
+                "line_spacing",
+                "line spacing",
+                list(SPACING_OPTIONS),
+                spacing_labels,
+            ),
+            (
+                "reader",
+                "paragraph_spacing",
+                "paragraph spacing",
+                list(SPACING_OPTIONS),
+                spacing_labels,
+            ),
             ("reader", "novel_style", "novel style", list(NOVEL_STYLES), {}),
             ("disguise", "log_style", "log style", list(LOG_STYLES), {}),
         ]

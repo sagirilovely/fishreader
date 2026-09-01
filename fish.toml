@@ -8,11 +8,11 @@ allow_kindleunpack = false          # MOBI 解析失败时是否尝试外部 kin
 
 [reader]
 # 以下设置可在终端内按 s 打开设置菜单实时调整，改完自动写回本文件
-font_size = "large" # small | medium | large（显示密度档位，不改终端真实字号）
-line_spacing = 1 # 每个逻辑行后追加的空行数；设为非 0 时覆盖 font_size 的映射
-paragraph_spacing = 1 # 段落后追加的空行数；设为非 0 时覆盖 font_size 的映射
+font_size = "medium" # small | medium | large（显示密度档位，不改终端真实字号）
+line_spacing = 0.25 # 行距（行后额外"行数"，0 或 0.25~2 小数；0 = 跟随 font_size）
+paragraph_spacing = 0.25 # 段距（段落后额外"行数"，同上）
 reader_width = "30%"               # 阅读区占终端宽度百分比（25%-40%）或固定列数
-reader_position = "left" # left | right | bottom（底部时阅读区占满宽度）
+reader_position = "right" # left | right | bottom（底部时阅读区占满宽度）
 novel_style = "markdown" # markdown | comment | docstring
 resume_last = true                 # 启动时自动续读上次书籍
 

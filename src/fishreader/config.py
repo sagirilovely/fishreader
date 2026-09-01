@@ -25,11 +25,24 @@ READER_POSITIONS = ("left", "right", "bottom")
 STATUS_LINES = ("minimal", "full")
 LOG_STYLES = ("agent", "vite", "npm", "git")
 
+# Spacing is expressed in *rows*, not in whole blank lines: a terminal can
+# only draw whole rows, so a fractional value is spread over the page —
+# 0.25 adds one blank row every 4 lines, 0.5 every 2 lines, 1.0 after every
+# line. This is what makes density tunable below "one blank line".
+SPACING_STEP = 0.25
+SPACING_MIN = 0.0
+SPACING_MAX = 2.0
+# Cycle order offered by the settings menu (0 means "follow font_size").
+SPACING_OPTIONS: list[float] = [
+    SPACING_MIN + i * SPACING_STEP
+    for i in range(int((SPACING_MAX - SPACING_MIN) / SPACING_STEP) + 1)
+]
+
 # font_size -> (line_spacing, paragraph_spacing)
-FONT_SIZE_SPACING: dict[str, tuple[int, int]] = {
-    "small": (0, 0),
-    "medium": (0, 1),
-    "large": (1, 2),
+FONT_SIZE_SPACING: dict[str, tuple[float, float]] = {
+    "small": (0.0, 0.0),
+    "medium": (0.0, 1.0),
+    "large": (1.0, 2.0),
 }
 
 DEFAULTS: dict = {
@@ -80,8 +93,8 @@ allow_kindleunpack = false          # MOBI 解析失败时是否尝试外部 kin
 [reader]
 # 以下设置可在终端内按 s 打开设置菜单实时调整，改完自动写回本文件
 font_size = "medium"               # small | medium | large（显示密度档位，不改终端真实字号）
-line_spacing = 0                   # 每个逻辑行后追加的空行数；设为非 0 时覆盖 font_size 的映射
-paragraph_spacing = 0              # 段落后追加的空行数；设为非 0 时覆盖 font_size 的映射
+line_spacing = 0                   # 行距（行后的额外空行数，支持 0.25 小数）；0 = 跟随 font_size
+paragraph_spacing = 0              # 段距（段落后的额外空行数，支持 0.25 小数）；0 = 跟随 font_size
 reader_width = "30%"               # 阅读区占终端宽度百分比（25%-40%）或固定列数
 reader_position = "right"          # left | right | bottom（底部时阅读区占满宽度）
 novel_style = "markdown"           # markdown | comment | docstring
@@ -110,6 +123,28 @@ autosave_on_page = true            # 翻页即保存进度；false 时仅退出�
 
 class ConfigError(ValueError):
     """Raised when the config file contains invalid values."""
+
+
+def snap_spacing(value: float) -> float:
+    """Round a spacing value onto the SPACING_STEP grid.
+
+    Keeps hand-written configs comparable with the values the settings menu
+    cycles through, so the menu never gets stuck on an off-grid value.
+    """
+    steps = int((float(value) + SPACING_STEP / 2) // SPACING_STEP)
+    return float(round(steps * SPACING_STEP, 2))
+
+
+def _validate_spacing(field: str, value: object) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ConfigError(f"reader.{field} must be a number, got {value!r}")
+    number = float(value)
+    if not SPACING_MIN <= number <= SPACING_MAX:
+        raise ConfigError(
+            f"reader.{field} must be between {SPACING_MIN:g} and {SPACING_MAX:g}, "
+            f"got {value!r}"
+        )
+    return snap_spacing(number)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -166,9 +201,7 @@ def _validate(raw: dict) -> None:
         raise ConfigError(f"invalid reader.reader_width: {width!r}")
 
     for field in ("line_spacing", "paragraph_spacing"):
-        value = reader[field]
-        if not isinstance(value, int) or not 0 <= value <= 2:
-            raise ConfigError(f"reader.{field} must be an integer 0-2")
+        reader[field] = _validate_spacing(field, reader[field])
 
     lo = float(disguise["log_interval_min"])
     hi = float(disguise["log_interval_max"])
@@ -260,13 +293,14 @@ class Config:
         cols = int(width) if isinstance(width, int) else int(terminal_cols * self.reader_width_fraction())
         return max(1, min(cols, terminal_cols - 1))
 
-    def effective_spacing(self) -> tuple[int, int]:
+    def effective_spacing(self) -> tuple[float, float]:
         """(line_spacing, paragraph_spacing) after font_size mapping.
 
-        Non-zero explicit values override the font_size mapping.
+        A non-zero explicit value in *either* field overrides the font_size
+        mapping for both (0 means "follow font_size").
         """
-        ls = int(self.reader.get("line_spacing", 0))
-        ps = int(self.reader.get("paragraph_spacing", 0))
+        ls = float(self.reader.get("line_spacing", 0))
+        ps = float(self.reader.get("paragraph_spacing", 0))
         if ls or ps:
             return (ls, ps)
         base_ls, base_ps = FONT_SIZE_SPACING[self.reader["font_size"]]
@@ -339,7 +373,8 @@ def _format_toml_value(value: object) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
-        return str(value)
+        # whole numbers stay integral so the file reads like a hand-written one
+        return str(int(value)) if float(value).is_integer() else str(value)
     if isinstance(value, str):
         return json.dumps(value, ensure_ascii=False)
     if isinstance(value, (list, tuple)):

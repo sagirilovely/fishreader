@@ -11,6 +11,7 @@
 - EPUB 按 spine 顺序提取正文，自动清理脚本/样式/导航；MOBI 优先用 `mobi` 库解包，失败时降级提示
 - **伪装日志 4 种风格随时切换**（`s` 键）：代码 Agent 日志、vite 构建输出、npm 安装/测试、git 操作流水——不同岗位都能选一个贴合的
 - **设置菜单**（`s` 键）：字号密度、阅读区位置（左/右/下）、阅读区宽度、行距、段距、正文样式，全部即时生效并写回 `fish.toml`
+- **行距可精细到 0.25 行**（设置菜单）：终端只能画整行，小数行距会摊到整页——`0.25` 每 4 行插 1 个空行，比"每行插 1 个空行"密得多
 - 章节目录（`t` 键）：一键跳到任意章节
 - 老板键（默认 `b`）：一键全屏英文模式，隐藏小说、关闭弹窗、过滤中文
 - 阅读进度自动保存，重启自动续读
@@ -114,8 +115,8 @@ allow_kindleunpack = false       # MOBI 失败时是否尝试外部 kindleunpack
 
 [reader]                         # 以下键均可运行时按 s 调整并自动写回
 font_size = "medium"             # small | medium | large（显示密度，不动终端真实字号）
-line_spacing = 0                 # 逻辑行后额外空行；非 0 时覆盖 font_size 映射
-paragraph_spacing = 0            # 段落后额外空行；非 0 时覆盖 font_size 映射
+line_spacing = 0                 # 行距（额外空行数，支持 0/0.25/0.5/.../2 小数）
+paragraph_spacing = 0            # 段距（段落后额外空行，同上）
 reader_width = "30%"             # 阅读区宽度："25%"~"40%" 或固定列数（如 36）
 reader_position = "right"        # left | right | bottom（底部时阅读区占满宽度）
 novel_style = "markdown"         # markdown | comment | docstring
@@ -145,6 +146,7 @@ autosave_on_page = true          # 翻页即存进度；false 则仅退出时保
 
 - **font_size 是显示密度档位**，不改终端真实字号——真实字号用终端自身的缩放快捷键（macOS Terminal/iTerm2：`Cmd`+`+` / `Cmd`+`-`）。
 - `line_spacing` / `paragraph_spacing` 设为 0 表示跟随 `font_size` 的映射（small=0/0、medium=0/1、large=1/2）；设为非 0 时以配置为准。
+- **行距可以小于一行**：终端只能画整行，所以 0.25/0.5 这类小数会被"摊"到整页——`0.25` = 每 4 行插 1 个空行，`0.5` = 每 2 行插 1 个空行。设置菜单里按 `←/→` 以 0.25 为步进循环（`0`→`0.25`→`0.5`→…→`2`），嫌 1 个空行太宽时往小调即可；`small` 档 + 两个 0 已经是最密（完全无空行）。
 - 从设置菜单改动会以"保留注释、只改对应键"的方式写回本文件；手写配置依然生效（重启后不冲突）。
 
 ## 常见问题

@@ -19,9 +19,12 @@ if str(_SRC) not in sys.path:
 from fishreader.models import Chapter  # noqa: E402
 from fishreader.textlayout import (  # noqa: E402
     Page,
+    blank_rows_after,
     chapter_index_at,
     display_width,
+    fit_lines,
     paginate,
+    spacing_rows,
     wrap_text,
     wrap_text_with_offsets,
 )
@@ -236,6 +239,62 @@ class PaginateTest(unittest.TestCase):
         p2 = paginate(chapters, text, 6, 6, 1)
         self.assertEqual(p2.lines, ["world"])
         self.assertEqual(p2.next_page_start, 12)  # "foo" starts at char 12
+
+
+class SpacingRowMathTest(unittest.TestCase):
+    """Fractional spacing: blank rows spread over a page, line count fitted exactly."""
+
+    def test_blank_rows_after_spreads_fractions(self):
+        self.assertEqual(blank_rows_after(4, 0), [0, 0, 0, 0])
+        self.assertEqual(blank_rows_after(4, 1), [1, 1, 1, 1])
+        self.assertEqual(blank_rows_after(4, 2), [2, 2, 2, 2])
+        # one blank row every four / two lines
+        self.assertEqual(blank_rows_after(8, 0.25), [0, 0, 0, 1, 0, 0, 0, 1])
+        self.assertEqual(blank_rows_after(4, 0.5), [0, 1, 0, 1])
+        # a fraction smaller than one line still yields something
+        self.assertEqual(blank_rows_after(2, 0.25), [0, 0])
+
+    def test_spacing_rows_matches_the_spread(self):
+        for spacing in (0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2):
+            for count in range(1, 40):
+                with self.subTest(spacing=spacing, count=count):
+                    self.assertEqual(
+                        sum(blank_rows_after(count, spacing)),
+                        spacing_rows(count, spacing),
+                    )
+        # average gap stays equal to the requested spacing
+        self.assertEqual(spacing_rows(100, 0.25), 25)
+        self.assertEqual(spacing_rows(9, 0.5), 4)
+
+    def test_fit_lines_is_exact(self):
+        for spacing in (0, 0.25, 0.5, 0.75, 1, 1.5, 2):
+            smallest_page = 1 + spacing_rows(1, spacing)
+            for height in range(1, 40):
+                with self.subTest(spacing=spacing, height=height):
+                    n = fit_lines(height, spacing)
+                    self.assertGreaterEqual(n, 1)
+                    if height < smallest_page:
+                        self.assertEqual(n, 1)  # even one line overflows: clamp
+                        continue
+                    self.assertLessEqual(n + spacing_rows(n, spacing), height)
+                    # one more line would not fit
+                    self.assertGreater(n + 1 + spacing_rows(n + 1, spacing), height)
+
+    def test_fit_lines_denser_than_integer_spacing(self):
+        # 30 rows: spacing 1 fits 15 lines, 0.25 fits 24 — the finer knob
+        # really does buy extra lines per page.
+        self.assertEqual(fit_lines(30, 1), 15)
+        self.assertEqual(fit_lines(30, 0.25), 24)
+        self.assertEqual(fit_lines(30, 0), 30)
+
+    def test_paginate_accepts_fractional_spacing(self):
+        chapters = _two_chapters()
+        text = "一二三四五六七八九十" * 3
+        tight = paginate(chapters, text, 0, 4, 10, line_spacing=0)
+        half = paginate(chapters, text, 0, 4, 10, line_spacing=0.5)
+        loose = paginate(chapters, text, 0, 4, 10, line_spacing=1)
+        self.assertGreater(len(half.lines), len(loose.lines))
+        self.assertLess(len(half.lines), len(tight.lines))
 
 
 if __name__ == "__main__":
