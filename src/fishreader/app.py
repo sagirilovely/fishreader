@@ -16,7 +16,14 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-from fishreader.config import Config
+from fishreader.config import (
+    FONT_SIZES,
+    LOG_STYLES,
+    NOVEL_STYLES,
+    READER_POSITIONS,
+    Config,
+    apply_toml_update,
+)
 from fishreader.fakefeed import FakeFeed
 from fishreader.library import Candidate, load_book, scan_library
 from fishreader.models import Book
@@ -26,6 +33,7 @@ from fishreader.widgets.agent_log import AgentLog
 from fishreader.widgets.chapter_modal import ChapterModal
 from fishreader.widgets.library_modal import LibraryModal
 from fishreader.widgets.reader_pane import FONT_WIDTH_BASIS, ReaderPane
+from fishreader.widgets.settings_modal import Row, SettingsModal
 
 MIN_TERMINAL_WIDTH = 40
 MIN_TERMINAL_HEIGHT = 12
@@ -46,6 +54,7 @@ class FishApp(App[None]):
         Binding("p", "prev_chapter", "prev chapter"),
         Binding("t", "toggle_chapters", "table of contents"),
         Binding("l", "toggle_library", "open recent files"),
+        Binding("s", "toggle_settings", "settings"),
         Binding("q", "quit", "quit"),
         Binding("ctrl+q", "quit", "quit"),
     ]
@@ -104,6 +113,16 @@ class FishApp(App[None]):
         }}
         #reader-col.boss-hidden {{ display: none; }}
         #reader-col.narrow-hidden {{ display: none; }}
+        #main.pos-vertical {{ layout: vertical; }}
+        #main.pos-vertical #agent-log {{
+            height: 1fr;
+            border-right: none;
+            border-top: solid #21262d;
+        }}
+        #reader-col.pos-bottom {{
+            width: 100%;
+            height: 30%;
+        }}
         #reader-header {{
             height: 1;
             background: #12151c;
@@ -155,6 +174,7 @@ class FishApp(App[None]):
 
         self._update_titlebar()
         self._geometry_changed()
+        self._apply_reader_position()
 
         # book discovery
         self.candidates = scan_library(self.config)
@@ -173,7 +193,8 @@ class FishApp(App[None]):
             )
             self._update_statusbar()
             return
-        log.write_line("OK", "reader ready - arrow keys flip pages")
+        if self.config.disguise["log_style"] == "agent":
+            log.write_line("OK", "reader ready - arrow keys flip pages")
         log.start()
 
         # resume last book; first run shows the library picker (M2)
@@ -211,7 +232,11 @@ class FishApp(App[None]):
         term_w = term_w or self.size.width
         term_h = term_h or self.size.height
         term_w = max(term_w, MIN_TERMINAL_WIDTH)
-        self.reader_cols = self.config.reader_width_columns(term_w)
+        if self.config.reader["reader_position"] == "bottom":
+            # bottom pane spans the full terminal width (1fr + padding)
+            self.reader_cols = max(8, term_w - 2)
+        else:
+            self.reader_cols = self.config.reader_width_columns(term_w)
         basis = FONT_WIDTH_BASIS.get(self.config.reader["font_size"], 2)
         self.wrap_width = max(4, self.reader_cols - basis)
         self._line_spacing, self._paragraph_spacing = self.config.effective_spacing()
@@ -219,8 +244,26 @@ class FishApp(App[None]):
         # clear wrap cache: geometry changed
         self._linecache = {}
 
+    def _apply_reader_position(self) -> None:
+        """Swap the reader pane between left/right/bottom placements."""
+        pos = self.config.reader["reader_position"]
+        main = self.query_one("#main", Horizontal)
+        col = self.query_one("#reader-col", Vertical)
+        log = self.query_one("#agent-log", AgentLog)
+        main.set_class(pos == "bottom", "pos-vertical")
+        col.set_class(pos == "bottom", "pos-bottom")
+        if pos == "left":
+            if main.children[0] is not col:
+                main.move_child(col, before=log)
+        elif pos == "right":
+            if main.children[0] is col:
+                main.move_child(col, after=log)
+
     def _visible_lines(self, height: int | None = None) -> int:
         h = max(1, (height or self._term_height or self.size.height) - 2)
+        if self.config.reader["reader_position"] == "bottom":
+            # #reader-col is 30% of the main area, minus the 1-line header
+            h = max(1, int(h * 0.30) - 1)
         return max(1, h // (1 + self._line_spacing))
 
     # -- chapter wrap cache ----------------------------------------------------
@@ -348,7 +391,7 @@ class FishApp(App[None]):
             sb.update(f"boss mode active  [{boss_key}]ack  [q]uit")
             return
         if self.current is None or not self.current.readable:
-            sb.update(f"[{boss_key}]oss  [l]ibrary  [q]uit     no book loaded")
+            sb.update(f"[{boss_key}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit     no book loaded")
             return
         book = self.current
         lines = self._chapter_lines(book, self.chapter_index, self.wrap_width)
@@ -357,10 +400,10 @@ class FishApp(App[None]):
         if self.config.disguise.get("status_line") == "full":
             hint = (
                 f"[{boss_key}]oss  [\u2190/\u2192]page  [\u2191/\u2193]line  "
-                f"[n/p]chap  [l]ibrary  [q]uit"
+                f"[n/p]chap  [t]oc  [l]ibrary  [s]ettings  [q]uit"
             )
         else:
-            hint = f"[{boss_key}]oss  [l]ibrary  [q]uit"
+            hint = f"[{boss_key}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit"
         sb.update(f"buff {pct:.1f}% | scroll {min(self.line_index+1, len(lines))}/{len(lines)} | {hint}")
 
     # -- actions -------------------------------------------------------------------
@@ -460,6 +503,64 @@ class FishApp(App[None]):
         self.chapter_index = chapter_index
         self.line_index = 0
         self._render()
+
+    # -- settings ------------------------------------------------------------------
+
+    def action_toggle_settings(self) -> None:
+        """Theme/settings popup: font, layout, spacing, log style."""
+        if isinstance(self.screen, ModalScreen):
+            return  # one popup at a time
+        self.push_screen(
+            SettingsModal(
+                self._setting_rows(),
+                self._setting_values(),
+                self._apply_setting,
+            )
+        )
+
+    def _setting_rows(self) -> list[Row]:
+        spacing_labels = {0: "auto"}
+        return [
+            ("reader", "font_size", "font size", list(FONT_SIZES), {}),
+            ("reader", "reader_position", "reader position", list(READER_POSITIONS), {}),
+            ("reader", "reader_width", "reader width", ["25%", "30%", "35%", "40%"], {}),
+            ("reader", "line_spacing", "line spacing", [0, 1, 2], spacing_labels),
+            ("reader", "paragraph_spacing", "paragraph spacing", [0, 1, 2], spacing_labels),
+            ("reader", "novel_style", "novel style", list(NOVEL_STYLES), {}),
+            ("disguise", "log_style", "log style", list(LOG_STYLES), {}),
+        ]
+
+    def _setting_values(self) -> dict[tuple[str, str], object]:
+        values: dict[tuple[str, str], object] = {}
+        for row in self._setting_rows():
+            section, key, *_ = row
+            values[(section, key)] = self.config.raw[section][key]
+        return values
+
+    def _apply_setting(self, section: str, key: str, value: object) -> None:
+        """Apply one setting change: runtime effect + persist to fish.toml."""
+        self.config.raw[section][key] = value
+        try:
+            apply_toml_update(self.config.path, section, {key: value})
+        except ConfigError as exc:
+            self.notify(
+                f"could not persist settings ({exc}) - change lasts this session",
+                severity="warning",
+                timeout=8,
+            )
+
+        if section == "disguise" and key == "log_style":
+            log = getattr(self, "_agent_log", None)
+            if log is not None:
+                log.feed.set_style(str(value))
+            return
+
+        if key == "reader_position":
+            self._apply_reader_position()
+        self._geometry_changed()
+        if self.current is not None and self.current.readable:
+            self._render()
+        self._update_statusbar()
 
     def action_toggle_boss_mode(self) -> None:
         """Boss key: hide the reading pane, drop any open popup, English only."""

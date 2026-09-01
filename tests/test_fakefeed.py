@@ -107,5 +107,63 @@ class FakeFeedTest(unittest.TestCase):
         self.assertTrue(any("OK" in line for burst in bursts for line in burst))
 
 
+class FakeFeedStyleTest(unittest.TestCase):
+    """vite/npm/git styles: ASCII, labeled, tool-appropriate content."""
+
+    def test_each_style_is_ascii_and_labeled(self):
+        for style in ("agent", "vite", "npm", "git"):
+            with self.subTest(style=style):
+                feed = FakeFeed(style=style, seed=9)
+                bursts = [feed.next(now=FIXED_NOW) for _ in range(60)]
+                seen = False
+                for burst in bursts:
+                    self.assertGreaterEqual(len(burst), 1)
+                    for label, line in burst:
+                        seen = True
+                        self.assertIn(label, LABELS)
+                        self.assertTrue(line.isascii(), f"non-ascii {style}: {line!r}")
+                        self.assertLessEqual(len(line), MAX_LINE_WIDTH)
+                self.assertTrue(seen)
+
+    def test_first_burst_announces_the_tool(self):
+        feed = FakeFeed(style="vite", seed=1)
+        first = [line for _, line in feed.next(now=FIXED_NOW)]
+        self.assertTrue(any("VITE" in line for line in first))
+        feed.set_style("npm")
+        second = [line for _, line in feed.next(now=FIXED_NOW)]
+        self.assertTrue(any("npm install" in line for line in second))
+        feed.set_style("git")
+        third = [line for _, line in feed.next(now=FIXED_NOW)]
+        self.assertTrue(any("git pull" in line for line in third))
+
+    def test_style_flavor_kept_over_many_bursts(self):
+        feed = FakeFeed(style="npm", seed=4)
+        lines = [
+            line
+            for _ in range(40)
+            for _, line in feed.next(now=FIXED_NOW)
+        ]
+        self.assertTrue(any("npm" in line for line in lines))
+        feed.set_style("git")
+        lines = [
+            line
+            for _ in range(40)
+            for _, line in feed.next(now=FIXED_NOW)
+        ]
+        self.assertTrue(
+            any(
+                "git" in line or "Rebasing" in line or "Fast-forward" in line
+                for line in lines
+            )
+        )
+
+    def test_unknown_style_rejected(self):
+        with self.assertRaises(ValueError):
+            FakeFeed(style="emacs")
+        feed = FakeFeed(style="agent")
+        with self.assertRaises(ValueError):
+            feed.set_style("emacs")
+
+
 if __name__ == "__main__":
     unittest.main()

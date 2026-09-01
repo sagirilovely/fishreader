@@ -154,6 +154,7 @@ class ConfigValidationTest(unittest.TestCase):
         ('[disguise]\nstatus_line = "fullx"', "status_line"),
         ('[disguise]\nboss_key = "esc"', "boss_key"),
         ('[disguise]\nboss_key = ""', "boss_key"),
+        ('[disguise]\nlog_style = "chinese"', "log_style"),
         ("[books]\nextensions = []", "extensions"),
         ("[books]\nextensions = [1, 2]", "extensions"),
         ("[books]\nextensions = ['ok', 3]", "extensions"),
@@ -182,6 +183,33 @@ class ConfigValidationTest(unittest.TestCase):
                 )
                 cfg = load_config(p, project_root=self.root)
                 self.assertEqual(cfg.reader["reader_width"], width)
+
+    def test_log_style_values_accepted(self):
+        for style in ("agent", "vite", "npm", "git"):
+            with self.subTest(style=style):
+                p = _write_toml(
+                    self.root,
+                    f"ls-{style}.toml",
+                    f'[disguise]\nlog_style = "{style}"',
+                )
+                cfg = load_config(p, project_root=self.root)
+                self.assertEqual(cfg.disguise["log_style"], style)
+
+    def test_legacy_english_log_style_normalized(self):
+        p = _write_toml(self.root, "ls-legacy.toml", '[disguise]\nlog_style = "english"')
+        cfg = load_config(p, project_root=self.root)
+        self.assertEqual(cfg.disguise["log_style"], "agent")
+
+    def test_reader_positions_accepted(self):
+        for pos in ("left", "right", "bottom"):
+            with self.subTest(pos=pos):
+                p = _write_toml(
+                    self.root,
+                    f"pos-{pos}.toml",
+                    f'[reader]\nreader_position = "{pos}"',
+                )
+                cfg = load_config(p, project_root=self.root)
+                self.assertEqual(cfg.reader["reader_position"], pos)
 
 
 class ConfigAccessorTest(unittest.TestCase):

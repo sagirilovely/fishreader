@@ -38,6 +38,10 @@ class AgentLog(RichLog):
         self._rng = random.Random()
         self.entry_count = 0  # lines written, for tests/status
 
+    @property
+    def feed(self) -> FakeFeed:
+        return self._feed
+
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:

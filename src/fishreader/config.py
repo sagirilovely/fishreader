@@ -7,6 +7,10 @@ over DEFAULTS. Unknown user keys are ignored.
 from __future__ import annotations
 
 import copy
+import json
+import os
+import re
+import tempfile
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -17,8 +21,9 @@ READER_WIDTH_MAX_PCT = 40
 
 FONT_SIZES = ("small", "medium", "large")
 NOVEL_STYLES = ("markdown", "comment", "docstring")
-READER_POSITIONS = ("right", "bottom")
+READER_POSITIONS = ("left", "right", "bottom")
 STATUS_LINES = ("minimal", "full")
+LOG_STYLES = ("agent", "vite", "npm", "git")
 
 # font_size -> (line_spacing, paragraph_spacing)
 FONT_SIZE_SPACING: dict[str, tuple[int, int]] = {
@@ -47,7 +52,7 @@ DEFAULTS: dict = {
         "agent_version": "0.4.2",
         "log_interval_min": 0.8,
         "log_interval_max": 1.5,
-        "log_style": "english",
+        "log_style": "agent",
         "status_line": "minimal",
         "boss_key": "b",
         "full_hide_chinese": True,
@@ -73,11 +78,12 @@ extensions = [".epub", ".mobi", ".txt"]
 allow_kindleunpack = false          # MOBI 解析失败时是否尝试外部 kindleunpack CLI
 
 [reader]
+# 以下设置可在终端内按 s 打开设置菜单实时调整，改完自动写回本文件
 font_size = "medium"               # small | medium | large（显示密度档位，不改终端真实字号）
 line_spacing = 0                   # 每个逻辑行后追加的空行数；设为非 0 时覆盖 font_size 的映射
 paragraph_spacing = 0              # 段落后追加的空行数；设为非 0 时覆盖 font_size 的映射
 reader_width = "30%"               # 阅读区占终端宽度百分比（25%-40%）或固定列数
-reader_position = "right"          # right | bottom（本版本使用 right）
+reader_position = "right"          # left | right | bottom（底部时阅读区占满宽度）
 novel_style = "markdown"           # markdown | comment | docstring
 resume_last = true                 # 启动时自动续读上次书籍
 
@@ -86,7 +92,7 @@ agent_name = "CodeAgent"
 agent_version = "0.4.2"
 log_interval_min = 0.8             # 假日志间隔（秒）
 log_interval_max = 1.5
-log_style = "english"              # 只允许英文日志
+log_style = "agent"                # agent | vite | npm | git（伪装日志风格，均只输出英文）
 status_line = "minimal"            # minimal | full
 boss_key = "b"                     # 老板键
 full_hide_chinese = true           # 老板模式下过滤 CJK 字符
@@ -174,6 +180,12 @@ def _validate(raw: dict) -> None:
         raise ConfigError(
             f"disguise.status_line must be one of {STATUS_LINES}"
         )
+    log_style = disguise["log_style"]
+    if log_style == "english":
+        disguise["log_style"] = "agent"  # legacy value; every style is English-only
+        log_style = "agent"
+    if log_style not in LOG_STYLES:
+        raise ConfigError(f"disguise.log_style must be one of {LOG_STYLES}")
     boss = disguise["boss_key"]
     if not isinstance(boss, str) or len(boss) != 1 or not boss.isprintable():
         raise ConfigError(f"disguise.boss_key must be a single printable character")
@@ -316,3 +328,107 @@ def load_config(
     _validate(merged)
     root = project_root or path.parent
     return Config(raw=merged, path=Path(path), root=root)
+
+
+# -- in-place config updates (used by the in-app settings menu) ---------------
+
+_SECTION_RE = re.compile(r"^\s*\[([^\]]+)\]\s*$")
+
+
+def _format_toml_value(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (list, tuple)):
+        return "[" + ", ".join(_format_toml_value(v) for v in value) + "]"
+    raise ConfigError(f"cannot write value of type {type(value).__name__}")
+
+
+def _trailing_comment(text: str) -> str:
+    """Return the '# comment' part of a TOML value (quotes-aware), or ''."""
+    in_str = False
+    for idx, ch in enumerate(text):
+        if ch == '"':
+            in_str = not in_str
+        elif ch == "#" and not in_str:
+            start = idx - 1 if idx > 0 and text[idx - 1] == " " else idx
+            return text[start:]
+    return ""
+
+
+def _replace_in_section(
+    lines: list[str], section: str, values: dict[str, object]
+) -> list[str]:
+    """Return a new list of lines with key=value pairs updated in `section`.
+
+    Comments and other keys are preserved; missing keys are appended at the
+    end of the section; a missing section is appended at the end of the file.
+    """
+    section_idx = next(
+        (i for i, ln in enumerate(lines) if _SECTION_RE.match(ln) and _SECTION_RE.match(ln).group(1).strip() == section),
+        None,
+    )
+    out = list(lines)
+    if section_idx is None:
+        if out and not out[-1].endswith("\n"):
+            out.append("\n")
+        out.append(f"\n[{section}]\n")
+        for key, value in values.items():
+            out.append(f"{key} = {_format_toml_value(value)}\n")
+        return out
+
+    end = next(
+        (j for j in range(section_idx + 1, len(out)) if _SECTION_RE.match(out[j])),
+        len(out),
+    )
+    for key, value in values.items():
+        pattern = re.compile(rf"^(\s*){re.escape(key)}(\s*=\s*)(.*?)(\r?\n?)$")
+        found = False
+        for j in range(section_idx + 1, end):
+            m = pattern.match(out[j])
+            if m:
+                indent, eq, old_value, newline = m.groups()
+                comment = _trailing_comment(old_value)
+                out[j] = f"{indent}{key}{eq}{_format_toml_value(value)}{comment}{newline}"
+                found = True
+                break
+        if not found:
+            out.insert(end, f"{key} = {_format_toml_value(value)}\n")
+            end += 1
+    return out
+
+
+def apply_toml_update(path: Path, section: str, values: dict[str, object]) -> None:
+    """Rewrite a few key=value pairs of `section` in place and atomically.
+
+    Preserves comments and unrelated keys, validates the result with tomllib
+    before touching the file, and raises ConfigError on any problem (the file
+    is left untouched).
+    """
+    path = Path(path)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read {path}: {exc}") from exc
+    lines = text.splitlines(keepends=True)
+    updated = _replace_in_section(lines, section, values)
+    try:
+        tomllib.loads("".join(updated))
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"refusing to write invalid toml to {path}: {exc}") from exc
+    tmp: str | None = None
+    try:
+        fd, tmp = tempfile.mkstemp(
+            dir=path.parent, prefix=path.name + ".", suffix=".tmp"
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write("".join(updated))
+        os.replace(tmp, path)
+    except OSError as exc:
+        raise ConfigError(f"cannot write {path}: {exc}") from exc
+    finally:
+        if tmp and os.path.exists(tmp):
+            os.unlink(tmp)
