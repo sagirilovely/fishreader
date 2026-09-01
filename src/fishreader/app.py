@@ -20,6 +20,7 @@ from fishreader.library import Candidate, load_book, scan_library
 from fishreader.models import Book
 from fishreader.state import ProgressStore
 from fishreader.textlayout import Page, wrap_text_with_offsets
+from fishreader.widgets.library_modal import LibraryModal
 from fishreader.widgets.reader_pane import FONT_WIDTH_BASIS, ReaderPane
 
 MIN_TERMINAL_WIDTH = 40
@@ -138,13 +139,15 @@ class FishApp(App[None]):
             return
         log.write("[ok] reader ready — arrow keys flip pages")
 
-        # resume last book or open the first one (library modal comes in M2)
+        # resume last book; first run shows the library picker (M2)
         to_open: str | None = None
         if self.config.reader.get("resume_last", True):
             to_open = self.progress.last_book_id()
-        if to_open is None or to_open not in self.valid_ids:
-            to_open = self.candidates[0].id
-        self.open_book(to_open)
+        if to_open is not None and to_open in self.valid_ids:
+            self.open_book(to_open)
+        else:
+            log.write("[ok] no resume target — press [l] for recent files")
+            self.action_toggle_library()
         self._update_statusbar()
 
     def on_resize(self, event) -> None:
@@ -218,8 +221,7 @@ class FishApp(App[None]):
             self.query_one("#reader-pane", ReaderPane).show_empty(
                 f"[unsupported] {book.reason or 'unknown error'}"
             )
-            self.progress.set_last_book(book.id)
-            self.progress.save()
+            self.notify(f"{book.id}: {book.reason}", severity="error", timeout=5)
             self._update_statusbar()
             return
         self.progress.set_last_book(book.id)
@@ -359,13 +361,20 @@ class FishApp(App[None]):
             self._render()
 
     def action_toggle_library(self) -> None:
-        # Library modal lands in M2; temporary placeholder.
         if not self.candidates:
             self.notify("no books in the library yet", severity="warning")
             return
-        self.notify(
-            f"library: {len(self.candidates)} book(s) — picker arrives in the next phase"
+        self.push_screen(
+            LibraryModal(
+                self.candidates,
+                current_id=self.current.id if self.current is not None else None,
+            ),
+            callback=self._on_library_result,
         )
+
+    def _on_library_result(self, book_id: str | None) -> None:
+        if book_id:
+            self.open_book(book_id)
 
     def action_quit(self) -> None:
         self._save_progress()

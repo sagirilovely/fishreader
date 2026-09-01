@@ -106,7 +106,7 @@ def split_chapters(text: str) -> list[tuple[str, str]]:
     return chapters
 
 
-_STRIP_TAGS = ("script", "style", "nav", "header", "footer", "noscript")
+_STRIP_TAGS = ("script", "style", "nav", "header", "footer", "noscript", "head")
 _BLOCK_TAGS = (
     "p", "div", "section", "li", "h1", "h2", "h3", "h4", "h5", "h6",
     "blockquote", "pre", "tr", "table",

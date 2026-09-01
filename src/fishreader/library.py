@@ -21,14 +21,15 @@ def natural_key(name: str):
 
 @dataclass
 class Candidate:
-    id: str       # stable id: posix path relative to project root
+    id: str       # stable id: posix path relative to project root,
+                  # or absolute path for scan dirs outside the root
     path: Path
     fmt: str
     size: int
 
     @property
     def display_name(self) -> str:
-        return self.id
+        return self.path.name
 
 
 def scan_library(config: Config) -> list[Candidate]:
@@ -52,9 +53,13 @@ def scan_library(config: Config) -> list[Candidate]:
             ext = p.suffix.lower()
             if ext not in extensions:
                 continue
+            try:
+                cid = p.relative_to(config.root).as_posix()
+            except ValueError:
+                cid = str(p)  # scan dir outside the project root
             found.append(
                 Candidate(
-                    id=p.relative_to(config.root).as_posix(),
+                    id=cid,
                     path=p,
                     fmt=ext.lstrip("."),
                     size=p.stat().st_size,
@@ -69,7 +74,7 @@ def load_book(candidate: Candidate, config: Config) -> Book:
 
     A single bad file never raises into the caller.
     """
-    parser = get_parser(candidate.fmt)
+    parser = get_parser(candidate.fmt, config)
     if parser is None:
         return unreadable_book(
             candidate.id, candidate.path, candidate.fmt,
