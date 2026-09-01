@@ -65,6 +65,10 @@ class ProgressStore:
 
     # -- queries -----------------------------------------------------------
 
+    @property
+    def raw(self) -> dict[str, Any]:
+        return self._data
+
     def last_book_id(self) -> str | None:
         return self._data.get("last_book_id")
 

@@ -7,6 +7,8 @@ The fake AgentLog feed and boss mode arrive in later phases.
 from __future__ import annotations
 
 import random
+import threading
+import webbrowser
 from bisect import bisect_right
 from pathlib import Path
 
@@ -17,11 +19,13 @@ from textual.screen import ModalScreen
 from textual.widgets import Static
 
 from fishreader.config import (
+    DISGUISE_MODES,
     FONT_SIZES,
     LOG_STYLES,
     NOVEL_STYLES,
     READER_POSITIONS,
     SPACING_OPTIONS,
+    WEB_THEMES,
     Config,
     ConfigError,
     apply_toml_update,
@@ -212,6 +216,23 @@ class FishApp(App[None]):
             log.write_line("OK", "reader ready - arrow keys flip pages")
         log.start()
 
+        # Launch Web Disguise Server if enabled
+        self._web_server = None
+        if self.config.web_enabled and not getattr(self, "is_headless", False):
+            try:
+                from fishreader.web.server import WebDisguiseServer
+
+                server = WebDisguiseServer(self.config, self.root)
+                web_url = server.start()
+                self._web_server = server
+                log.write_line("INFO", f"web disguise active at {web_url}")
+                if self.config.web_auto_open:
+                    threading.Thread(
+                        target=lambda: webbrowser.open(web_url), daemon=True
+                    ).start()
+            except Exception as exc:
+                log.write_line("WARN", f"web server failed to start: {exc}")
+
         # resume last book; first run shows the library picker (M2)
         to_open: str | None = None
         if self.config.reader.get("resume_last", True):
@@ -236,6 +257,9 @@ class FishApp(App[None]):
         self.query_one("#reader-col", Vertical).set_class(narrow, "narrow-hidden")
 
     def on_unmount(self) -> None:
+        web_server = getattr(self, "_web_server", None)
+        if web_server is not None:
+            web_server.stop()
         agent_log = getattr(self, "_agent_log", None)
         if agent_log is not None:
             agent_log.stop()
@@ -628,6 +652,8 @@ class FishApp(App[None]):
             ),
             ("reader", "novel_style", "novel style", list(NOVEL_STYLES), {}),
             ("disguise", "log_style", "log style", list(LOG_STYLES), {}),
+            ("web", "theme", "web theme", list(WEB_THEMES), {}),
+            ("web", "disguise_mode", "web disguise", list(DISGUISE_MODES), {}),
         ]
 
     def _setting_values(self) -> dict[tuple[str, str], object]:

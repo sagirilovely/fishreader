@@ -26,6 +26,14 @@ status_line = "minimal"            # minimal | full
 boss_key = "b"                     # 老板键
 full_hide_chinese = true           # 老板模式下过滤 CJK 字符
 
+[web]
+enabled = true                     # 启动终端摸鱼时是否同时启动网页伪装服务
+port = 8080                        # 网页服务端口（端口被占用时自动递增尝试）
+host = "127.0.0.1"                 # 监听地址
+auto_open = true                   # 启动时是否自动在默认浏览器打开
+theme = "vue"                      # 默认技术文档主题: vue | react | rust | python
+disguise_mode = "hybrid"           # 网页排版伪装度: clean | hybrid | code_dense
+
 [theme]
 log_level_color = true             # 日志级别着色（INFO/WARN/OK）
 reader_color = "gray"              # 阅读区颜色
@@ -34,3 +42,4 @@ accent = "green"
 [progress]
 file = ".fish_progress.json"
 autosave_on_page = true            # 翻页即保存进度；false 时仅退出保存
+

@@ -325,6 +325,22 @@ class ConfigAccessorTest(unittest.TestCase):
         self.assertEqual(cfg.log_interval_range(), (0.8, 1.5))
         self.assertEqual(cfg.disguise["status_line"], "minimal")
         self.assertIs(cfg.reader["resume_last"], True)
+        self.assertTrue(cfg.web_enabled)
+        self.assertTrue(cfg.web_auto_open)
+        self.assertEqual(cfg.web["theme"], "vue")
+
+    def test_web_validation(self):
+        with self.assertRaises(ConfigError):
+            self._config_with("[web]\nport = 70000")
+        with self.assertRaises(ConfigError):
+            self._config_with('[web]\ntheme = "unknown"')
+        with self.assertRaises(ConfigError):
+            self._config_with('[web]\ndisguise_mode = "unknown"')
+
+        cfg = self._config_with('[web]\nenabled = false\nport = 9090\ntheme = "react"')
+        self.assertFalse(cfg.web_enabled)
+        self.assertEqual(cfg.web["port"], 9090)
+        self.assertEqual(cfg.web["theme"], "react")
 
     def test_reader_width_fraction(self):
         cfg = load_config(self.root / "d.toml", project_root=self.root)  # 30%

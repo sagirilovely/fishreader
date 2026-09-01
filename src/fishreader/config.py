@@ -24,6 +24,8 @@ NOVEL_STYLES = ("markdown", "comment", "docstring")
 READER_POSITIONS = ("left", "right", "bottom")
 STATUS_LINES = ("minimal", "full")
 LOG_STYLES = ("agent", "vite", "npm", "git")
+WEB_THEMES = ("vue", "react", "rust", "python")
+DISGUISE_MODES = ("clean", "hybrid", "code_dense")
 
 # Spacing is expressed in *rows*, not in whole blank lines: a terminal can
 # only draw whole rows, so a fractional value is spread over the page —
@@ -75,6 +77,14 @@ DEFAULTS: dict = {
         "reader_color": "gray",
         "accent": "green",
     },
+    "web": {
+        "enabled": True,
+        "port": 8080,
+        "host": "127.0.0.1",
+        "auto_open": True,
+        "theme": "vue",
+        "disguise_mode": "hybrid",
+    },
     "progress": {
         "file": ".fish_progress.json",
         "autosave_on_page": True,
@@ -109,6 +119,14 @@ log_style = "agent"                # agent | vite | npm | git（伪装日志风�
 status_line = "minimal"            # minimal | full
 boss_key = "b"                     # 老板键
 full_hide_chinese = true           # 老板模式下过滤 CJK 字符
+
+[web]
+enabled = true                     # 启动终端摸鱼时是否同时启动网页伪装服务
+port = 8080                        # 网页服务端口（端口被占用时自动递增尝试）
+host = "127.0.0.1"                 # 监听地址
+auto_open = true                   # 启动时是否自动在默认浏览器打开
+theme = "vue"                      # 默认技术文档主题: vue | react | rust | python
+disguise_mode = "hybrid"           # 网页排版伪装度: clean | hybrid | code_dense
 
 [theme]
 log_level_color = true             # 日志级别着色（INFO/WARN/OK）
@@ -237,6 +255,26 @@ def _validate(raw: dict) -> None:
     else:
         raise ConfigError("books.extensions must be a non-empty list")
 
+    if "web" in raw:
+        web = raw["web"]
+        if not isinstance(web.get("enabled", True), bool):
+            raise ConfigError("web.enabled must be a boolean")
+        port = web.get("port", 8080)
+        if not isinstance(port, int) or isinstance(port, bool) or not (1024 <= port <= 65535):
+            raise ConfigError(
+                f"web.port must be an integer between 1024 and 65535, got {port!r}"
+            )
+        theme = web.get("theme", "vue")
+        if theme not in WEB_THEMES:
+            raise ConfigError(f"web.theme must be one of {WEB_THEMES}, got {theme!r}")
+        disguise_mode = web.get("disguise_mode", "hybrid")
+        if disguise_mode not in DISGUISE_MODES:
+            raise ConfigError(
+                f"web.disguise_mode must be one of {DISGUISE_MODES}, got {disguise_mode!r}"
+            )
+        if not isinstance(web.get("auto_open", True), bool):
+            raise ConfigError("web.auto_open must be a boolean")
+
 
 @dataclass
 class Config:
@@ -263,6 +301,18 @@ class Config:
     @property
     def theme(self) -> dict:
         return self.raw["theme"]
+
+    @property
+    def web(self) -> dict:
+        return self.raw.get("web", DEFAULTS["web"])
+
+    @property
+    def web_enabled(self) -> bool:
+        return bool(self.web.get("enabled", True))
+
+    @property
+    def web_auto_open(self) -> bool:
+        return bool(self.web.get("auto_open", True))
 
     @property
     def progress(self) -> dict:

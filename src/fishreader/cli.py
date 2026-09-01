@@ -33,13 +33,34 @@ def _check_dependencies() -> tuple[list[str], bool]:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="fishreader",
-        description="Terminal novel reader disguised as a coding agent.",
+        description="Terminal novel reader disguised as a coding agent and web documentation.",
         epilog="DEFAULT: reads fish.toml from the project root.",
     )
     parser.add_argument(
         "--config",
         metavar="PATH",
         help="path to a fish.toml config file (default: <project>/fish.toml)",
+    )
+    parser.add_argument(
+        "--no-web",
+        action="store_true",
+        help="disable the background web documentation disguise server",
+    )
+    parser.add_argument(
+        "--web-only",
+        action="store_true",
+        help="run only the web disguise server without launching the terminal TUI",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        metavar="PORT",
+        help="port for the web documentation server (default: 8080)",
+    )
+    parser.add_argument(
+        "--theme",
+        choices=["vue", "react", "rust", "python"],
+        help="web documentation theme (default: from fish.toml or 'vue')",
     )
     return parser
 
@@ -96,6 +117,39 @@ def main(argv: list[str] | None = None) -> int:
     except config_mod.ConfigError as exc:
         print(f"[fishreader] config error: {exc}", file=sys.stderr)
         return 1
+
+    # Apply CLI overrides
+    if args.no_web:
+        cfg.raw.setdefault("web", {})["enabled"] = False
+    if args.port:
+        cfg.raw.setdefault("web", {})["port"] = args.port
+    if args.theme:
+        cfg.raw.setdefault("web", {})["theme"] = args.theme
+
+    if args.web_only:
+        import time
+        import webbrowser
+        from fishreader.web.server import WebDisguiseServer
+
+        server = WebDisguiseServer(
+            cfg, root, port=args.port or cfg.web.get("port", 8080)
+        )
+        url = server.start()
+        candidates = server.get_candidates()
+        print(f"[fishreader] Web Documentation Disguise Server started: {url}")
+        print(
+            f"[fishreader] Active Theme: {cfg.web.get('theme', 'vue')} | Discovered Books: {len(candidates)}"
+        )
+        print("[fishreader] Press Ctrl+C to exit.")
+        if cfg.web_auto_open:
+            webbrowser.open(url)
+        try:
+            while server.is_running:
+                time.sleep(0.5)
+        except KeyboardInterrupt:
+            print("\n[fishreader] Stopping server...")
+            server.stop()
+        return 0
 
     from fishreader.app import FishApp
 

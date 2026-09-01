@@ -11,8 +11,15 @@
 - 自动扫描 `books/` 目录（可配置），支持 `.txt` / `.epub` / `.mobi`
 - TXT 自动识别编码（UTF-8 / GBK / GB18030 / Big5），自动按章节拆分（`第一章`、`第3章`、`Chapter 1`、`CHAPTER IV` 等）
 - EPUB 按 spine 顺序提取正文，自动清理脚本/样式/导航；MOBI 优先用 `mobi` 库解包，失败时降级提示
+- **🌐 网页端伪装文档阅读器（新增）**：
+  - 启动终端摸鱼时后台自动启动零额外依赖的本地 Web 服务并自动打开浏览器
+  - 4 款高仿真技术文档体系：**Vue 3 (VitePress)**、**React (react.dev)**、**Rust (mdBook)**、**Python (Sphinx)**
+  - 小说章节智能排版为技术文档：H1/H2 标题、API 偏好开关、`💡 API 参考` / `⚠️ 注意事项` 提示框、语法高亮伪装代码块、右侧 `本页目录` (TOC)
+  - **网页老板键（一键脱险）**：按 `b` 键、`Esc` 或双击 Logo 瞬间切为真实官方技术文档，再按恢复
+  - 快捷键支持：`[` / `]` 上下章、`⌘K` 全局章节搜索、深色/浅色模式无缝切换
+  - 进度与终端端双向同步
 - **伪装日志 4 种风格随时切换**（`s` 键）：代码 Agent 日志、vite 构建输出、npm 安装/测试、git 操作流水——不同岗位都能选一个贴合的
-- **设置菜单**（`s` 键）：字号密度、阅读区位置（左/右/下）、阅读区宽度、行距、段距、正文样式，全部即时生效并写回 `fish.toml`
+- **设置菜单**（`s` 键）：字号密度、阅读区位置（左/右/下）、阅读区宽度、行距、段距、正文样式、网页文档主题，全部即时生效并写回 `fish.toml`
 - **行距可精细到 0.25 行**（设置菜单）：终端只能画整行，小数行距会摊到整页——`0.25` 每 4 行插 1 个空行，比"每行插 1 个空行"密得多
 - 章节目录（`t` 键）：一键跳到任意章节；再按 `t` 光标自动定位到当前章节
 - 老板键（默认 `b`）：一键全屏英文模式，隐藏小说、关闭弹窗、过滤中文
@@ -41,7 +48,11 @@ python3 -m venv .venv
 ## 使用方法
 
 ```bash
-python run.py                     # 在项目根目录执行
+python run.py                     # 启动终端摸鱼 + 自动打开网页文档阅读器
+python run.py --web-only          # 仅启动网页伪装服务（纯浏览器摸鱼）
+python run.py --no-web            # 仅启动终端摸鱼，不启动网页服务
+python run.py --port 8080         # 指定网页端口
+python run.py --theme react       # 指定网页文档主题 (vue / react / rust / python)
 python run.py --config my.toml    # 指定配置文件
 # 或安装后直接运行：fishreader
 ```
@@ -133,6 +144,14 @@ log_style = "agent"              # agent | vite | npm | git（仅英文）
 status_line = "minimal"          # minimal | full（页面/行数提示）
 boss_key = "b"                   # 老板键（单个可打印字符）
 full_hide_chinese = true         # 老板模式过滤 CJK
+
+[web]
+enabled = true                   # 启动时是否同时运行网页伪装阅读器
+port = 8080                      # Web 服务端口（占用时自动尝试下一个端口）
+host = "127.0.0.1"               # 监听地址
+auto_open = true                 # 启动时是否自动在默认浏览器打开
+theme = "vue"                    # 默认文档主题: vue | react | rust | python
+disguise_mode = "hybrid"         # 网页排版伪装风格: clean | hybrid | code_dense
 
 [theme]
 log_level_color = true           # 日志级别着色
