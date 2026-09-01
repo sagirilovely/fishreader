@@ -180,7 +180,10 @@ class FishApp(App[None]):
         with Horizontal(id="main"):
             yield AgentLog(
                 id="agent-log",
-                feed=FakeFeed(),
+                feed=FakeFeed(
+                    style=self.config.disguise.get("log_style", "agent"),
+                    project_root=self.root,
+                ),
                 min_interval=self.config.disguise["log_interval_min"],
                 max_interval=self.config.disguise["log_interval_max"],
                 color_levels=self.config.theme["log_level_color"],

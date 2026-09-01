@@ -4,7 +4,7 @@ Template + slot randomization keeps the feed varied and ASCII-only, with a
 recent-template guard against short-term repeats. Each style imitates a
 different tool so a backend, frontend or infra dev can pick a plausible one:
 
-- agent:  generic coding-agent activity (planning/search/edit/test/git/review)
+- agent:  DeepSeek / Claude Code agentic coding loop (Think / Bash / View / Edit / Result)
 - vite:   vite dev server / build output
 - npm:    npm install / scripts output
 - git:    terminal git sessions
@@ -17,39 +17,30 @@ from __future__ import annotations
 import random
 from collections import deque
 from datetime import datetime
+from pathlib import Path
 
 MAX_LINE_WIDTH = 120
 
 LOG_STYLES = ("agent", "vite", "npm", "git")
 
 _MODULES = [
-    "auth", "parser", "api", "cache", "scheduler", "storage", "net",
-    "core", "utils", "config", "db", "render",
+    "app", "parser", "config", "state", "textlayout", "fakefeed",
+    "server", "real_docs", "formatter", "library", "models",
 ]
 _FUNCS = [
-    "validate", "extract", "retry", "normalize", "flush", "handle",
-    "load", "merge", "dispatch", "render", "resolve", "backoff",
+    "validate_config", "extract_chapter", "render_page", "normalize_spacing",
+    "flush_progress", "handle_boss_key", "parse_stream", "compute_wrap",
+    "tokenize_code", "dispatch_action", "resolve_book", "check_resize",
 ]
 _TESTS = [
-    "test_auth_flow", "test_parse_edge", "test_cache_miss",
-    "test_retry_limit", "test_payload_size", "test_conn_pool",
+    "test_app_smoke", "test_txt_parser", "test_epub_parser",
+    "test_textlayout", "test_web_server", "test_web_video",
 ]
 _PATHS = [
-    "src/services.py", "src/net/session.py", "tests/test_api.py",
-    "docs/notes.md", "src/core/worker.py", "scripts/smoke.sh",
+    "src/fishreader/app.py", "src/fishreader/config.py", "src/fishreader/state.py",
+    "src/fishreader/textlayout.py", "src/fishreader/fakefeed.py", "src/fishreader/web/server.py",
 ]
-_ISSUES = ["issue #4711", "TICKET-223", "regression #4080", "flaky job #99"]
-_NEEDLES = ["session handling", "cache key", "deadline", "retry budget", "backoff"]
-
-# category -> probability weight
-_CATEGORIES = [
-    ("planning", 0.22),
-    ("edit", 0.20),
-    ("test", 0.20),
-    ("search", 0.16),
-    ("git", 0.12),
-    ("review", 0.10),
-]
+_NEEDLES = ["boss_key", "reader_width", "auto_pause_on_boss", "line_spacing", "wrap_width"]
 
 # -- non-agent style pools ----------------------------------------------------
 
@@ -62,7 +53,7 @@ _PKGS = [
     "chalk", "sass", "lodash", "rimraf", "tailwindcss", "eslint",
     "prettier", "postcss", "vue-router", "axios", "dayjs", "pinia",
 ]
-_BRANCHES = ["main", "dev", "feature/session", "fix/cache", "hotfix/parser", "release/2.3"]
+_BRANCHES = ["main", "dev", "feature/web-player", "fix/boss-banner", "hotfix/parser", "release/v2.1"]
 
 _STYLE_INTROS: dict[str, list[tuple[str, str]]] = {
     "vite": [
@@ -99,14 +90,22 @@ _GIT_KEYS = [
 class FakeFeed:
     """Yields short English log entries that look like a tool at work."""
 
-    def __init__(self, style: str = "agent", seed: int | None = None):
+    def __init__(
+        self,
+        style: str = "agent",
+        seed: int | None = None,
+        project_root: Path | str | None = None,
+    ):
         if style not in LOG_STYLES:
             raise ValueError(f"unknown log style {style!r}, expected one of {LOG_STYLES}")
         self.style = style
+        self.project_root = Path(project_root) if project_root else Path.cwd()
+        self._root_str = str(self.project_root.resolve()).replace("\\", "/")
         self._first_lines = list(_STYLE_INTROS.get(style, ()))
         self._rng = random.Random(seed)
         self._recent: deque[tuple] = deque(maxlen=12)   # template keys
-        self._recent_lines: deque[str] = deque(maxlen=16)  # rendered lines
+        self._recent_lines: deque[str] = deque(maxlen=24)  # rendered lines
+        self._step_queue: deque[tuple[str, str]] = deque()
 
     def set_style(self, style: str) -> None:
         """Switch style; the next burst announces the new tool."""
@@ -117,6 +116,7 @@ class FakeFeed:
             self._first_lines = list(_STYLE_INTROS.get(style, ()))
             self._recent.clear()
             self._recent_lines.clear()
+            self._step_queue.clear()
 
     # -- helpers ---------------------------------------------------------------
 
@@ -134,100 +134,139 @@ class FakeFeed:
         return key
 
     def _format(self, ts: str, label: str, text: str) -> str:
-        line = f"{ts} [{label}] {text}"
+        if self.style == "agent":
+            line = text
+        else:
+            line = f"{ts} [{label}] {text}"
         if len(line) > MAX_LINE_WIDTH:
             line = line[: MAX_LINE_WIDTH - 3] + "..."
         return line
 
-    # -- agent generators --------------------------------------------------------
+    # -- agent episode generators (DeepSeek / Claude Code harness style) --------
 
-    def _gen_planning(self) -> list[tuple[str, str]]:
-        tpl = self._rng.randint(0, 3)
-        mod, fn, issue = self._pick(_MODULES), self._pick(_FUNCS), self._pick(_ISSUES)
-        if tpl == 0:
-            return [("INFO", f"planning next edit: reduce coupling in {mod}")]
-        if tpl == 1:
-            return [("INFO", f"weighing {self._rng.randint(2, 4)} options for {mod}.{fn}")]
-        if tpl == 2:
-            return [("INFO", f"gathering context for {issue}")]
-        return [("INFO", f"outlining steps: {fn} -> {self._pick(_FUNCS)} ({mod})")]
-
-    def _gen_edit(self) -> list[tuple[str, str]]:
-        tpl = self._rng.randint(0, 3)
-        mod, path = self._pick(_MODULES), self._pick(_PATHS)
-        if tpl == 0:
-            return [("INFO", f"updating {path}")]
-        if tpl == 1:
-            return [("INFO", f"applying patch to {mod}.py - {self._rng.randint(1, 9)} hunks")]
-        if tpl == 2:
-            return [("INFO", f"renamed {self._pick(_FUNCS)} -> {self._pick(_FUNCS)} in {mod}")]
-        return [("INFO", f"touching {path}"), ("INFO", "0 conflicts after merge")]
-
-    def _gen_test(self) -> list[tuple[str, str]]:
-        tpl = self._rng.randint(0, 3)
-        passed = self._rng.randint(40, 120)
-        total = passed + self._rng.randint(0, 10)
-        if tpl == 0:
-            return [("INFO", f"$ pytest -q tests/{self._pick(_TESTS)}.py")]
-        if tpl == 1:
-            return [("OK", f"{passed}/{total} tests passed ({self._rng.randint(0, 4)} skipped)")]
-        if tpl == 2:
-            return [("WARN", f"{self._rng.randint(1, 3)} failing: {self._pick(_TESTS)}")]
+    def _agent_episode_shell_debug(self) -> list[tuple[str, str]]:
+        r = self._root_str
         return [
-            ("INFO", f"$ pytest -q tests/ -k {self._pick(_TESTS)}"),
-            ("OK", f"{passed}/{total} tests passed"),
+            ("INFO", "Think: So multiple `echo` commands in one shell call hang! Yet earlier simple `echo hi > run.py` works. This is suspicious."),
+            ("INFO", f"Bash: cd {r} && ls -l zz.py 2>&1 || true"),
+            ("WARN", "Think: So command didn't even create first file? It timed out before executing? Maybe the tool runner is blocking."),
+            ("INFO", "Bash: echo ok"),
+            ("INFO", "Think: Okay."),
+            ("INFO", f"Bash: cd {r} && echo 'hello' > zz.py && cat zz.py"),
+            ("INFO", "Think: So single statement works. Multiple statements separated by `&&` sometimes hang. Let's test python execution directly."),
+            ("INFO", f"Bash: cd {r} && python3 -c \"from pathlib import Path; Path('zz.py').write_text('print(1)')\""),
+            ("INFO", "Think: So `python3 -c` works. Multiple statements in python? Let's test write multiple files in one python -c."),
+            ("INFO", f"Bash: cd {r} && python3 -c \"from pathlib import Path; [Path(f'zz{{i}}.py').write_text('x\\n') for i in range(3)]\""),
+            ("OK", "Think: Great. So use Python `-c` with semicolons works reliably. Let's test writing the runner script now."),
+            ("INFO", f"Bash: cd {r} && python3 -c \"from pathlib import Path; Path('run.py').write_text('#!/usr/bin/env python3\\n')\""),
+            ("WARN", "Think: Writing to `run.py` via Python hangs. But writing to `zz.py` works. Something specific about `run.py` locking?"),
         ]
 
-    def _gen_search(self) -> list[tuple[str, str]]:
-        tpl = self._rng.randint(0, 2)
-        needle = self._pick(_NEEDLES)
-        if tpl == 0:
-            return [("INFO", f'$ rg "{needle}" src/')]
-        if tpl == 1:
-            return [
-                ("INFO", f'$ rg "{needle}" src/'),
-                ("OK", f"{self._rng.randint(2, 42)} matches in {self._rng.randint(2, 9)} files"),
-            ]
-        return [("OK", f'found "{needle}" in {self._pick(_PATHS)}')]
+    def _agent_episode_ast_statusbar(self) -> list[tuple[str, str]]:
+        r = self._root_str
+        return [
+            ("INFO", "Think: Let's inspect `src/fishreader/app.py` AST to see why the layout collapsed when terminal resized below 80 columns."),
+            ("INFO", f"Bash: cd {r} && python3 -c \"import ast; ast.parse(open('src/fishreader/app.py').read())\""),
+            ("INFO", "Think: Syntax is valid. Let's check `_update_statusbar` where `min(self.line_index, len(lines)-1)` is computed."),
+            ("INFO", f"Bash: cd {r} && rg \"def _update_statusbar\" src/"),
+            ("INFO", "Think: Found the issue: `_update_statusbar` was called before `lines` cache was initialized. Adding None-check guard."),
+            ("INFO", f"Bash: cd {r} && git diff -U3 src/fishreader/app.py"),
+            ("INFO", "Think: Let's run the smoke tests to verify the terminal resize and statusbar fix."),
+            ("INFO", f"Bash: cd {r} && pytest tests/test_app_smoke.py -v"),
+            ("OK", "Result: tests/test_app_smoke.py::test_boss_key PASSED [100%]"),
+        ]
 
-    def _gen_git(self) -> list[tuple[str, str]]:
-        tpl = self._rng.randint(0, 3)
-        n = self._rng.randint(1, 12)
+    def _agent_episode_parser_opt(self) -> list[tuple[str, str]]:
+        r = self._root_str
+        return [
+            ("INFO", "Think: Measuring memory consumption and CPU profile during EPUB spine unpacking with BeautifulSoup."),
+            ("INFO", f"Bash: cd {r} && python3 -m cProfile -s tottime scripts/bench_parser.py 2>&1 | head -n 15"),
+            ("INFO", "Think: `BeautifulSoup.get_text()` accounts for 68% of parse time. We can optimize regex whitespace folding."),
+            ("INFO", f"Bash: cd {r} && pytest tests/test_epub_parser.py tests/test_txt_parser.py -q"),
+            ("OK", "Result: 18 passed in 0.24s (zero encoding warnings)"),
+        ]
+
+    def _agent_episode_video_stream(self) -> list[tuple[str, str]]:
+        r = self._root_str
+        return [
+            ("INFO", "Think: Testing HTTP 206 Partial Content byte-range header parsing for HTML5 video player."),
+            ("INFO", f"Bash: cd {r} && curl -s -I -H \"Range: bytes=0-1024\" http://127.0.0.1:8080/api/videos/demo.mp4 2>&1 | head -n 6"),
+            ("OK", "Think: Received 206 Partial Content with correct Content-Range and Accept-Ranges: bytes. Video seeking verified."),
+            ("INFO", f"Bash: cd {r} && pytest tests/test_web_video.py -v"),
+            ("OK", "Result: 6 passed in 0.038s"),
+        ]
+
+    def _agent_episode_git_regression(self) -> list[tuple[str, str]]:
+        r = self._root_str
+        return [
+            ("INFO", "Think: Checking git working directory status before staging changes."),
+            ("INFO", f"Bash: cd {r} && git status --short"),
+            ("INFO", "Think: Uncommitted modifications in `src/` and `tests/`. Running full regression suite before commit."),
+            ("INFO", f"Bash: cd {r} && python3 -m unittest discover -s tests -v"),
+            ("OK", "Think: All unit tests passed. Staging and committing changes."),
+            ("INFO", f"Bash: cd {r} && git add src/ tests/ && git commit -m \"refactor(agent): improve terminal fake feed realism\""),
+        ]
+
+    def _agent_dynamic_pair(self) -> list[tuple[str, str]]:
+        r = self._root_str
+        mod = self._pick(_MODULES)
+        fn = self._pick(_FUNCS)
+        test = self._pick(_TESTS)
+        path = self._pick(_PATHS)
+        needle = self._pick(_NEEDLES)
+
+        tpl = self._rng.randint(0, 5)
         if tpl == 0:
-            return [("INFO", "$ git status --short")]
+            return [
+                ("INFO", f"Think: Verifying if `{mod}.py` has any unresolved type annotation errors."),
+                ("INFO", f"Bash: cd {r} && mypy src/fishreader/{mod}.py --ignore-missing-imports"),
+            ]
         if tpl == 1:
             return [
-                ("INFO", f"{n} changed files, {self._rng.randint(4, 200)} insertions(+)"),
-                ("INFO", f"{self._rng.randint(0, 40)} deletions(-)"),
+                ("INFO", f"Think: Checking AST tree nodes for `{fn}` definition in `{mod}.py`."),
+                ("INFO", f"Bash: cd {r} && python3 -c \"import ast; ast.parse(open('{path}').read())\""),
             ]
         if tpl == 2:
-            return [("OK", f"staged {n} files on branch fix/{self._pick(_MODULES)}")]
-        return [("INFO", "$ git diff --stat")]
-
-    def _gen_review(self) -> list[tuple[str, str]]:
-        tpl = self._rng.randint(0, 2)
-        mod, fn = self._pick(_MODULES), self._pick(_FUNCS)
-        if tpl == 0:
-            return [("INFO", f"inspecting diff hunk in {mod}.py")]
-        if tpl == 1:
-            return [("INFO", f"checking edge cases for {mod}.{fn}")]
-        return [("WARN", f"note: {fn} may block on empty input ({mod})")]
+            return [
+                ("INFO", f"Think: Searching codebase for references to `{needle}` in `src/`."),
+                ("INFO", f"Bash: cd {r} && rg \"{needle}\" src/"),
+            ]
+        if tpl == 3:
+            return [
+                ("INFO", f"Think: Running targeted test suite `{test}.py` with verbose traceback."),
+                ("INFO", f"Bash: cd {r} && pytest tests/{test}.py -v"),
+                ("OK", f"Result: tests/{test}.py PASSED [100%]"),
+            ]
+        if tpl == 4:
+            return [
+                ("INFO", f"Think: Inspecting git diff stats for `{path}`."),
+                ("INFO", f"Bash: cd {r} && git diff --stat {path}"),
+            ]
+        return [
+            ("INFO", f"Think: Checking syntax and ruff linter compliance for `src/fishreader/`."),
+            ("INFO", f"Bash: cd {r} && ruff check src/fishreader/"),
+            ("OK", "Result: All checks passed without lint errors."),
+        ]
 
     def _agent_burst(self) -> list[tuple[str, str]]:
-        names = [name for name, _ in _CATEGORIES]
-        weights = [w for _, w in _CATEGORIES]
-        category = self._rng.choices(names, weights=weights, k=1)[0]
-        tpl = self._rng.randint(0, 3)
-        key = (category, tpl)
-        if key in self._recent:
-            for _ in range(32):  # avoid repeating the same template recently
-                category = self._rng.choices(names, weights=weights, k=1)[0]
-                tpl = self._rng.randint(0, 3)
-                key = (category, tpl)
-                if key not in self._recent:
-                    break
-        self._recent.append(key)
-        return getattr(self, f"_gen_{category}")()
+        if not self._step_queue:
+            episodes = [
+                self._agent_episode_shell_debug,
+                self._agent_episode_ast_statusbar,
+                self._agent_episode_parser_opt,
+                self._agent_episode_video_stream,
+                self._agent_episode_git_regression,
+                self._agent_dynamic_pair,
+                self._agent_dynamic_pair,
+            ]
+            chosen_func = self._rng.choice(episodes)
+            chosen = chosen_func()
+            self._step_queue.extend(chosen)
+
+        # Emit 1 to 2 lines per tick from current queue
+        burst_len = min(len(self._step_queue), self._rng.randint(1, 2))
+        res = [self._step_queue.popleft() for _ in range(burst_len)]
+        return res
 
     # -- style bursts -------------------------------------------------------------
 
@@ -344,8 +383,10 @@ class FakeFeed:
         # Re-roll until no line repeats a recently emitted one (slots like
         # issue numbers or search needles can otherwise collide by chance).
         attempts = 0
-        while any(line in self._recent_lines for _, line in out) and attempts < 6:
+        while any(line in self._recent_lines for _, line in out) and attempts < 12:
             attempts += 1
+            if self.style == "agent":
+                self._step_queue.clear()
             out = self._render_burst(ts)
         for _, line in out:
             self._recent_lines.append(line)

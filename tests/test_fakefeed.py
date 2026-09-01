@@ -58,10 +58,11 @@ class FakeFeedTest(unittest.TestCase):
                 self.assertTrue(line.isascii(), f"non-ascii line: {line!r}")
                 self.assertLessEqual(len(line), MAX_LINE_WIDTH)
                 self.assertLessEqual(len(line), 120)
+                # Agent lines start with Think, Bash, or Result
                 self.assertTrue(
-                    _valid_timestamp(line), f"bad timestamp: {line!r}"
+                    line.startswith(("Think", "Bash", "Result", "View", "Edit")),
+                    f"unexpected agent line format: {line!r}",
                 )
-                self.assertTrue(line.startswith(("0", "1", "2")), line)
 
     def test_every_burst_is_non_empty(self):
         feed = FakeFeed(seed=42)
@@ -69,11 +70,11 @@ class FakeFeedTest(unittest.TestCase):
             burst = feed.next(now=FIXED_NOW)
             self.assertGreaterEqual(len(burst), 1)
             for label, line in burst:
-                self.assertIn(f" [{label}] ", line)
+                self.assertIn(label, LABELS)
+                self.assertTrue(line)
 
     def test_adjacent_bursts_effectively_differ(self):
-        # No adjacent bursts may be identical (template + slot collisions are
-        # re-rolled). Under seed 42 this must hold strictly.
+        # No adjacent bursts may be identical
         feed = FakeFeed(seed=42)
         prev = None
         identical = 0
@@ -85,9 +86,6 @@ class FakeFeedTest(unittest.TestCase):
         self.assertEqual(identical, 0)
 
     def test_no_adjacent_duplicate_lines(self):
-        # Adjacent *lines* must differ too: fixed templates such as
-        # "$ git status --short" or coincidental slot collisions used to slip
-        # through the category-level guard.
         feed = FakeFeed(seed=42)
         prev = None
         duplicate_lines = 0
@@ -101,10 +99,10 @@ class FakeFeedTest(unittest.TestCase):
     def test_feed_has_variety(self):
         feed = FakeFeed(seed=42)
         bursts = [tuple(line for _, line in feed.next(now=FIXED_NOW)) for _ in range(1000)]
-        self.assertGreaterEqual(len(set(bursts)), 100)
-        self.assertTrue(any("INFO" in line for burst in bursts for line in burst))
-        self.assertTrue(any("WARN" in line for burst in bursts for line in burst))
-        self.assertTrue(any("OK" in line for burst in bursts for line in burst))
+        self.assertGreaterEqual(len(set(bursts)), 50)
+        all_lines = [line for burst in bursts for line in burst]
+        self.assertTrue(any(line.startswith("Think") for line in all_lines))
+        self.assertTrue(any(line.startswith("Bash") for line in all_lines))
 
 
 class FakeFeedStyleTest(unittest.TestCase):

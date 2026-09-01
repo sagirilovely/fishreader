@@ -18,6 +18,19 @@ _LABEL_STYLE = {
 }
 
 
+def _append_with_code_highlights(
+    t: Text, text: str, default_style: str = "#e2e8f0", code_style: str = "bold #fbbf24"
+) -> None:
+    parts = text.split("`")
+    for i, part in enumerate(parts):
+        if not part:
+            continue
+        if i % 2 == 1:
+            t.append(f"`{part}`", style=code_style)
+        else:
+            t.append(part, style=default_style)
+
+
 class AgentLog(RichLog):
     """Scrolling log pane fed by a FakeFeed on a randomized schedule."""
 
@@ -74,17 +87,42 @@ class AgentLog(RichLog):
         self._schedule()
 
     def write_line(self, label: str, text: str, timestamped: bool = True) -> None:
-        """Append one entry; the [LEVEL] tag is colored when theme allows."""
+        """Append one entry; the [LEVEL] tag or Agent badge is colored when theme allows."""
         if timestamped:
             ts = datetime.now().strftime("%H:%M:%S")
             line = f"{ts} [{label}] {text}"
         else:
-            line = text  # feed lines already carry "HH:MM:SS [LEVEL] ..."
+            line = text
 
         if self.color_levels:
-            tag, _, body = line.partition("]")
             rendered = Text()
-            if body:
+            if line.startswith("Think · "):
+                body = line[8:]
+                rendered.append("⚙ Think", style="bold #a78bfa")
+                rendered.append(" · ", style="dim #6b7280")
+                _append_with_code_highlights(rendered, body, default_style="#e2e8f0", code_style="bold #fbbf24")
+            elif line.startswith("Bash · "):
+                body = line[7:]
+                rendered.append(">_ Bash", style="bold #34d399")
+                rendered.append(" · ", style="dim #6b7280")
+                _append_with_code_highlights(rendered, body, default_style="#f1f5f9", code_style="bold #38bdf8")
+            elif line.startswith("Result · "):
+                body = line[9:]
+                rendered.append("✓ Result", style="bold #10b981")
+                rendered.append(" · ", style="dim #6b7280")
+                rendered.append(body, style="#a7f3d0")
+            elif line.startswith("View · "):
+                body = line[7:]
+                rendered.append("👁 View", style="bold #60a5fa")
+                rendered.append(" · ", style="dim #6b7280")
+                rendered.append(body, style="#cbd5e1")
+            elif line.startswith("Edit · "):
+                body = line[7:]
+                rendered.append("✏ Edit", style="bold #fbbf24")
+                rendered.append(" · ", style="dim #6b7280")
+                rendered.append(body, style="#cbd5e1")
+            elif "]" in line and "[" in line:
+                tag, _, body = line.partition("]")
                 rendered.append(tag + "]", style=_LABEL_STYLE.get(label, "dim"))
                 rendered.append(body)
             else:
