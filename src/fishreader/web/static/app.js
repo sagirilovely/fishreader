@@ -947,12 +947,17 @@
   }
 
   function highlightFakeCode(code, lang) {
-    // Simple regex-based syntax highlighter for clean realistic looks
-    return code
-      .replace(/(\/\/.*$|#.*$)/gm, '<span style="color:#6a9955;font-style:italic">$1</span>')
-      .replace(/\b(import|export|from|const|let|var|function|return|if|else|async|await|fn|pub|use|def|class|struct|impl)\b/g, '<span style="color:#c678dd;font-weight:600">$1</span>')
-      .replace(/\b(ref|computed|reactive|useState|useEffect|useMemo|Arc|Mutex|Result|Option)\b/g, '<span style="color:#61afef">$1</span>')
-      .replace(/('([^'\\]|\\.)*'|"([^"\\]|\\.)*")/g, '<span style="color:#98c379">$1</span>');
+    if (!code) return '';
+    // Single regex tokenization matching one token at a time to prevent corrupting tag attributes
+    const tokenRegex = /(\/\/[^\n]*|#[^\n]*)|('([^'\\]|\\.)*'|"([^"\\]|\\.)*")|\b(import|export|from|const|let|var|function|return|if|else|async|await|fn|pub|use|def|class|struct|impl)\b|\b(ref|computed|reactive|useState|useEffect|useMemo|Arc|Mutex|Result|Option)\b/g;
+
+    return code.replace(tokenRegex, (match, comment, str, _sq, _dq, keyword, builtin) => {
+      if (comment) return `<span class="hl-com">${comment}</span>`;
+      if (str) return `<span class="hl-str">${str}</span>`;
+      if (keyword) return `<span class="hl-kw">${keyword}</span>`;
+      if (builtin) return `<span class="hl-fn">${builtin}</span>`;
+      return match;
+    });
   }
 
   // --- Search Modal (⌘K) ---
