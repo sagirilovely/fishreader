@@ -118,6 +118,34 @@ class FishAppSmokeTest(unittest.IsolatedAsyncioTestCase):
                 await pilot.pause()
                 self.assertFalse(app._boss_mode)
 
+    async def test_boss_mode_toggles_claude_robot_pane(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "books").mkdir()
+            (root / "books" / "novel.txt").write_text("第一章\n\n正文。\n", encoding="utf-8")
+            cfg = load_config(root / "fish.toml", project_root=root)
+            app = FishApp(cfg, root)
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.press("escape")
+                claude_pane = app.query_one("#claude-pane")
+                reader_pane = app.query_one("#reader-pane")
+                self.assertFalse(claude_pane.has_class("boss-active"))
+                self.assertFalse(reader_pane.has_class("boss-active"))
+
+                # Enter boss mode
+                await pilot.press("b")
+                await pilot.pause()
+                self.assertTrue(claude_pane.has_class("boss-active"))
+                self.assertTrue(reader_pane.has_class("boss-active"))
+                self.assertIn("claude_code.sh", _plain(app.query_one("#reader-header", Static)))
+
+                # Exit boss mode
+                await pilot.press("b")
+                await pilot.pause()
+                self.assertFalse(claude_pane.has_class("boss-active"))
+                self.assertFalse(reader_pane.has_class("boss-active"))
+                self.assertIn("reading_notes.md", _plain(app.query_one("#reader-header", Static)))
+
 
 if __name__ == "__main__":
     unittest.main()
