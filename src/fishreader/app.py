@@ -44,7 +44,6 @@ from fishreader.textlayout import (
 )
 from fishreader.widgets.agent_log import AgentLog
 from fishreader.widgets.chapter_modal import ChapterModal
-from fishreader.widgets.claude_robot import ClaudeRobotPane
 from fishreader.widgets.library_modal import LibraryModal
 from fishreader.widgets.reader_pane import (
     FONT_WIDTH_BASIS,
@@ -162,20 +161,6 @@ class FishApp(App[None]):
             overflow-y: hidden;
             padding: 0 1;
         }}
-        #reader-pane.boss-active {{
-            display: none;
-        }}
-        #claude-pane {{
-            width: 1fr;
-            height: 1fr;
-            display: none;
-            overflow-y: hidden;
-            background: #12151c;
-            padding: 0 1;
-        }}
-        #claude-pane.boss-active {{
-            display: block;
-        }}
         #tiny-screen {{
             display: none;
             height: 1fr;
@@ -206,7 +191,6 @@ class FishApp(App[None]):
             with Vertical(id="reader-col"):
                 yield Static("reading_notes.md", id="reader-header", markup=False)
                 yield ReaderPane(id="reader-pane")
-                yield ClaudeRobotPane(project_root=self.root, id="claude-pane")
         yield Static(id="statusbar", markup=False)
         yield Static(id="tiny-screen", markup=False)
 
@@ -715,28 +699,17 @@ class FishApp(App[None]):
         self._update_statusbar()
 
     def action_toggle_boss_mode(self) -> None:
-        """Boss key: switch reading pane to animated Claude Code robot mascot, drop popups."""
+        """Boss key: hide the reading pane, drop any open popup, English only."""
         self._boss_mode = not self._boss_mode
-        reader_pane = self.query_one("#reader-pane", ReaderPane)
-        claude_pane = self.query_one("#claude-pane", ClaudeRobotPane)
-        reader_header = self.query_one("#reader-header", Static)
-
-        reader_pane.set_class(self._boss_mode, "boss-active")
-        claude_pane.set_class(self._boss_mode, "boss-active")
-
-        if self._boss_mode:
-            reader_header.update("claude_code.sh [running]")
-            claude_pane.start_animation()
-            if isinstance(self.screen, ModalScreen):
-                self.screen.dismiss(None)
-        else:
-            reader_header.update("reading_notes.md")
-            claude_pane.stop_animation()
-            if self.current is not None:
-                self._render()
-
+        self.query_one("#reader-col", Vertical).set_class(
+            self._boss_mode, "boss-hidden"
+        )
+        if self._boss_mode and isinstance(self.screen, ModalScreen):
+            self.screen.dismiss(None)
         self._update_titlebar()
         self._update_statusbar()
+        if not self._boss_mode and self.current is not None:
+            self._render()
 
     def _on_library_result(self, book_id: str | None) -> None:
         if book_id:
