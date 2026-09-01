@@ -96,28 +96,28 @@ class AgentLog(RichLog):
 
         if self.color_levels:
             rendered = Text()
-            if line.startswith("Think · "):
-                body = line[8:]
+            if line.startswith("Think: ") or line.startswith("Think · "):
+                body = line.split(": ", 1)[1] if ": " in line else line.split(" · ", 1)[1]
                 rendered.append("⚙ Think", style="bold #a78bfa")
                 rendered.append(" · ", style="dim #6b7280")
                 _append_with_code_highlights(rendered, body, default_style="#e2e8f0", code_style="bold #fbbf24")
-            elif line.startswith("Bash · "):
-                body = line[7:]
+            elif line.startswith("Bash: ") or line.startswith("Bash · "):
+                body = line.split(": ", 1)[1] if ": " in line else line.split(" · ", 1)[1]
                 rendered.append(">_ Bash", style="bold #34d399")
                 rendered.append(" · ", style="dim #6b7280")
                 _append_with_code_highlights(rendered, body, default_style="#f1f5f9", code_style="bold #38bdf8")
-            elif line.startswith("Result · "):
-                body = line[9:]
+            elif line.startswith("Result: ") or line.startswith("Result · "):
+                body = line.split(": ", 1)[1] if ": " in line else line.split(" · ", 1)[1]
                 rendered.append("✓ Result", style="bold #10b981")
                 rendered.append(" · ", style="dim #6b7280")
                 rendered.append(body, style="#a7f3d0")
-            elif line.startswith("View · "):
-                body = line[7:]
+            elif line.startswith("View: ") or line.startswith("View · "):
+                body = line.split(": ", 1)[1] if ": " in line else line.split(" · ", 1)[1]
                 rendered.append("👁 View", style="bold #60a5fa")
                 rendered.append(" · ", style="dim #6b7280")
                 rendered.append(body, style="#cbd5e1")
-            elif line.startswith("Edit · "):
-                body = line[7:]
+            elif line.startswith("Edit: ") or line.startswith("Edit · "):
+                body = line.split(": ", 1)[1] if ": " in line else line.split(" · ", 1)[1]
                 rendered.append("✏ Edit", style="bold #fbbf24")
                 rendered.append(" · ", style="dim #6b7280")
                 rendered.append(body, style="#cbd5e1")
