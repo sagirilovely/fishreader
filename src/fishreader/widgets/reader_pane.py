@@ -20,7 +20,7 @@ def decorate_lines(
 
     - markdown:   every line prefixed with "- " (work-note style)
     - comment:    every line prefixed with "# "
-    - docstring:  wrapped by quote markers on the first and last line
+    - docstring:  wrapped by triple-quote markers on the first and last line
     Spacing: `line_spacing` blank lines after every content line;
     `paragraph_spacing` extra blank lines after paragraph breaks.
     """
@@ -40,6 +40,8 @@ def decorate_lines(
             styled.append(f"- {raw}")
         if line_spacing > 0:
             styled.extend([""] * line_spacing)
+    if novel_style == "docstring":
+        styled = ['"""'] + styled + ['"""']
     return styled
 
 

@@ -12,14 +12,16 @@ from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
-from textual.widgets import RichLog, Static
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Static
 
 from fishreader.config import Config
+from fishreader.fakefeed import FakeFeed
 from fishreader.library import Candidate, load_book, scan_library
 from fishreader.models import Book
 from fishreader.state import ProgressStore
 from fishreader.textlayout import Page, wrap_text_with_offsets
+from fishreader.widgets.agent_log import AgentLog
 from fishreader.widgets.library_modal import LibraryModal
 from fishreader.widgets.reader_pane import FONT_WIDTH_BASIS, ReaderPane
 
@@ -51,6 +53,14 @@ class FishApp(App[None]):
         self.root = project_root
         self.session_id = random.randint(1000, 9999)
         self._boss_mode = False
+        # Boss key is configurable; priority=True so it fires even while
+        # a modal screen (e.g. the library picker) is open.
+        self._bindings.bind(
+            config.boss_key,
+            "toggle_boss_mode",
+            description="boss mode",
+            priority=True,
+        )
 
         # State must exist before on_mount: Textual dispatches Resize
         # *before* Mount, and on_resize touches these.
@@ -82,10 +92,22 @@ class FishApp(App[None]):
             border-right: solid #21262d;
             color: #8b949e;
         }}
-        #reader-pane {{
+        #reader-col {{
             width: {css_width};
             height: 100%;
             background: #12151c;
+            overflow-y: hidden;
+        }}
+        #reader-col.boss-hidden {{ display: none; }}
+        #reader-header {{
+            height: 1;
+            background: #12151c;
+            color: {reader_color};
+            padding: 0 1;
+        }}
+        #reader-pane {{
+            width: 1fr;
+            height: 1fr;
             color: {reader_color};
             overflow-y: hidden;
             padding: 0 1;
@@ -107,8 +129,16 @@ class FishApp(App[None]):
         # rich markup would otherwise swallow.
         yield Static(id="titlebar", markup=False)
         with Horizontal(id="main"):
-            yield RichLog(id="agent-log")
-            yield ReaderPane(id="reader-pane")
+            yield AgentLog(
+                id="agent-log",
+                feed=FakeFeed(),
+                min_interval=self.config.disguise["log_interval_min"],
+                max_interval=self.config.disguise["log_interval_max"],
+                color_levels=self.config.theme["log_level_color"],
+            )
+            with Vertical(id="reader-col"):
+                yield Static("reading_notes.md", id="reader-header", markup=False)
+                yield ReaderPane(id="reader-pane")
         yield Static(id="statusbar", markup=False)
         yield Static(id="tiny-screen", markup=False)
 
@@ -127,17 +157,19 @@ class FishApp(App[None]):
         self.progress = ProgressStore(self.config.progress_path()).load()
         self.progress.drop_stale(self.valid_ids)
 
-        log = self.query_one("#agent-log", RichLog)
-        log.write(f"[{self.config.agent_name.lower()}] workspace initialized")
-        log.write(f"[info] scanning {len(self.candidates)} candidate file(s)")
+        log = self.query_one("#agent-log", AgentLog)
+        self._agent_log = log
+        log.write_line("INFO", "workspace initialized")
+        log.write_line("INFO", f"scanning {len(self.candidates)} candidate file(s)")
         if not self.candidates:
-            log.write("[ok] no books yet — drop files into books/ and restart")
+            log.write_line("OK", "no books yet - drop files into books/ and restart")
             self.query_one("#reader-pane", ReaderPane).show_empty(
                 "no books found\n\nput .txt / .epub / .mobi files into\nbooks/ and restart"
             )
             self._update_statusbar()
             return
-        log.write("[ok] reader ready — arrow keys flip pages")
+        log.write_line("OK", "reader ready - arrow keys flip pages")
+        log.start()
 
         # resume last book; first run shows the library picker (M2)
         to_open: str | None = None
@@ -157,6 +189,9 @@ class FishApp(App[None]):
             self._render()
 
     def on_unmount(self) -> None:
+        agent_log = getattr(self, "_agent_log", None)
+        if agent_log is not None:
+            agent_log.stop()
         self._save_progress()
 
     # -- geometry ------------------------------------------------------------
@@ -276,23 +311,25 @@ class FishApp(App[None]):
 
     def _update_statusbar(self) -> None:
         sb = self.query_one("#statusbar", Static)
+        boss_key = self.config.boss_key
         if self._boss_mode:
-            sb.update(f"[{self.config.boss_key}]ack  [q]uit     boss mode")
+            sb.update(f"boss mode active  [{boss_key}]ack  [q]uit")
             return
         if self.current is None or not self.current.readable:
-            sb.update("[l]ibrary  [q]uit     no book loaded")
+            sb.update(f"[{boss_key}]oss  [l]ibrary  [q]uit     no book loaded")
             return
         book = self.current
         lines = self._chapter_lines(book, self.chapter_index, self.wrap_width)
         offset = lines[min(self.line_index, len(lines) - 1)][1] if lines else 0
         pct = (offset / book.total_chars * 100.0) if book.total_chars else 0.0
-        hint = (
-            f"[{self.config.boss_key}]oss [{chr(0x2190)}/{chr(0x2192)}]page [l]ibrary [q]uit"
-            if self.config.disguise.get("status_line") == "full"
-            else f"[l]ibrary [q]uit"
-        )
+        if self.config.disguise.get("status_line") == "full":
+            hint = (
+                f"[{boss_key}]oss  [\u2190/\u2192]page  [\u2191/\u2193]line  "
+                f"[n/p]chap  [l]ibrary  [q]uit"
+            )
+        else:
+            hint = f"[{boss_key}]oss  [l]ibrary  [q]uit"
         sb.update(f"buff {pct:.1f}% | scroll {min(self.line_index+1, len(lines))}/{len(lines)} | {hint}")
-        # 「buff」 align with doc: buff 37.2% | scroll 124/401
 
     # -- actions -------------------------------------------------------------------
 
@@ -371,6 +408,19 @@ class FishApp(App[None]):
             ),
             callback=self._on_library_result,
         )
+
+    def action_toggle_boss_mode(self) -> None:
+        """Boss key: hide the reading pane, drop any open popup, English only."""
+        self._boss_mode = not self._boss_mode
+        self.query_one("#reader-col", Vertical).set_class(
+            self._boss_mode, "boss-hidden"
+        )
+        if self._boss_mode and isinstance(self.screen, LibraryModal):
+            self.screen.dismiss(None)
+        self._update_titlebar()
+        self._update_statusbar()
+        if not self._boss_mode and self.current is not None:
+            self._render()
 
     def _on_library_result(self, book_id: str | None) -> None:
         if book_id:
