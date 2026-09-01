@@ -14,3 +14,7 @@ dist/
 # Runtime
 .fish_progress.json
 .nojekyll
+
+# Readable content lives in books/; keep user novels out of git
+books/*
+!books/.gitkeep

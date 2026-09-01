@@ -44,6 +44,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _project_root() -> Path:
+    """Resolve the project root (where books/ and fish.toml live).
+
+    In a source/editable install the package lives at <root>/src/fishreader,
+    so the repo marker (run.py) identifies the root. A plain site-packages
+    install has no repo marker: fall back to the invocation directory, which
+    is where the user is expected to keep their books/ folder.
+    """
+    repo = Path(__file__).resolve().parent.parent.parent
+    if (repo / "run.py").is_file():
+        return repo
+    return Path.cwd()
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
@@ -73,7 +87,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from fishreader import config as config_mod
 
-    root = Path(__file__).resolve().parent.parent  # project root (src/fishreader/cli.py)
+    root = _project_root()
     cfg_path = Path(args.config).expanduser() if args.config else root / "fish.toml"
     try:
         cfg = config_mod.load_config(
