@@ -67,7 +67,7 @@ class FishApp(App[None]):
     BINDINGS = [
         Binding("right,space,pagedown", "next_page", "next page"),
         Binding("left,pageup", "prev_page", "prev page"),
-        Binding("up", "scroll_up", "scroll up one line"),
+        Binding("up", "toggle_boss_mode", "boss mode", priority=True),
         Binding("down", "scroll_down", "scroll down one line"),
         Binding("n", "next_chapter", "next chapter"),
         Binding("p", "prev_chapter", "prev chapter"),
@@ -84,12 +84,18 @@ class FishApp(App[None]):
         self.root = project_root
         self.session_id = random.randint(1000, 9999)
         self._boss_mode = False
-        # Boss key is configurable; priority=True so it fires even while
-        # a modal screen (e.g. the library picker) is open.
+        # Boss keys (config.boss_key + up arrow) are priority=True so they fire
+        # even while a modal screen (e.g. settings / library picker) is open.
         self._bindings.bind(
             config.boss_key,
             "toggle_boss_mode",
             description="boss mode",
+            priority=True,
+        )
+        self._bindings.bind(
+            "up",
+            "toggle_boss_mode",
+            description="boss mode (up arrow)",
             priority=True,
         )
 
@@ -489,11 +495,12 @@ class FishApp(App[None]):
     def _update_statusbar(self) -> None:
         sb = self.query_one("#statusbar", Static)
         boss_key = self.config.boss_key
+        boss_hint = f"{boss_key}/\u2191" if boss_key != "up" else "up"
         if self._boss_mode:
-            sb.update(f"boss mode active  [{boss_key}]ack  [q]uit")
+            sb.update(f"boss mode active  [{boss_hint}]ack  [q]uit")
             return
         if self.current is None or not self.current.readable:
-            sb.update(f"[{boss_key}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit     no book loaded")
+            sb.update(f"[{boss_hint}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit     no book loaded")
             return
         book = self.current
         lines = self._chapter_lines(book, self.chapter_index, self.wrap_width)
@@ -501,11 +508,11 @@ class FishApp(App[None]):
         pct = (offset / book.total_chars * 100.0) if book.total_chars else 0.0
         if self.config.disguise.get("status_line") == "full":
             hint = (
-                f"[{boss_key}]oss  [\u2190/\u2192]page  [\u2191/\u2193]line  "
+                f"[{boss_hint}]oss  [\u2190/\u2192]page  [\u2193]line  "
                 f"[n/p]chap  [t]oc  [l]ibrary  [s]ettings  [q]uit"
             )
         else:
-            hint = f"[{boss_key}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit"
+            hint = f"[{boss_hint}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit"
         n_chapters = len(book.chapters)
         chap = f"chap {min(self.chapter_index + 1, n_chapters)}/{n_chapters} | "
         sb.update(

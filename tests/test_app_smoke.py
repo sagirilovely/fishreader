@@ -99,6 +99,25 @@ class FishAppSmokeTest(unittest.IsolatedAsyncioTestCase):
                 self.assertTrue(app._boss_mode)
                 self.assertNotIsInstance(app.screen, SettingsModal)
 
+    async def test_up_arrow_triggers_boss_mode(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "books").mkdir()
+            (root / "books" / "novel.txt").write_text("第一章\n\n正文。\n", encoding="utf-8")
+            cfg = load_config(root / "fish.toml", project_root=root)
+            app = FishApp(cfg, root)
+            async with app.run_test(size=(120, 40)) as pilot:
+                await pilot.press("escape")
+                self.assertFalse(app._boss_mode)
+                # Press Up Arrow
+                await pilot.press("up")
+                await pilot.pause()
+                self.assertTrue(app._boss_mode)
+                # Press Up Arrow again to resume
+                await pilot.press("up")
+                await pilot.pause()
+                self.assertFalse(app._boss_mode)
+
 
 if __name__ == "__main__":
     unittest.main()
