@@ -241,21 +241,39 @@ class FishApp(App[None]):
         return lines
 
     def _progress_to_view(self, book: Book, entry: dict | None) -> None:
-        """Set chapter_index / line_index from a progress entry."""
+        """Set chapter_index / line_index from a progress entry.
+
+        char_offset is the authoritative position (survives resizes and
+        inconsistent chapter_index); scroll_line is only a fallback when no
+        char offset was saved.
+        """
         if entry is None:
             self.chapter_index = 0
             self.line_index = 0
             return
-        ci = min(entry.get("chapter_index", 0), max(0, len(book.chapters) - 1))
-        if not book.chapters:
-            ci = 0
-        lines = self._chapter_lines(book, ci, self.wrap_width)
-        offsets = [off for _, off in lines]
-        line = bisect_right(offsets, entry.get("char_offset", 0)) - 1
+        offset = int(entry.get("char_offset", 0)) or 0
+        if offset > 0:
+            ci = book.chapter_index_at(offset)
+        else:
+            ci = min(
+                max(0, int(entry.get("chapter_index", 0))),
+                max(0, len(book.chapters) - 1),
+            )
         self.chapter_index = ci
-        self.line_index = max(0, line)
-        if entry.get("scroll_line") and lines:
-            self.line_index = min(max(0, int(entry["scroll_line"])), len(lines) - 1)
+        if not book.chapters:
+            self.line_index = 0
+            return
+        lines = self._chapter_lines(book, ci, self.wrap_width)
+        if offset > 0 and lines:
+            offsets = [off for _, off in lines]
+            self.line_index = max(0, bisect_right(offsets, offset) - 1)
+        elif lines:
+            self.line_index = min(
+                max(0, int(entry.get("scroll_line", 0))), len(lines) - 1
+            )
+        else:
+            self.line_index = 0
+        self.line_index = min(self.line_index, len(lines) - 1)
 
     # -- books -----------------------------------------------------------------
 
