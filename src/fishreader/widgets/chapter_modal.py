@@ -65,7 +65,11 @@ class ChapterModal(ModalScreen[int | None]):
     def __init__(self, chapters: list[Chapter], current_index: int = 0):
         super().__init__()
         self._chapters = chapters
-        self._current_index = current_index
+        if chapters:
+            self._current_index = max(0, min(current_index, len(chapters) - 1))
+        else:
+            self._current_index = 0
+        self._list: ListView | None = None
 
     def compose(self):
         items = [
@@ -74,11 +78,23 @@ class ChapterModal(ModalScreen[int | None]):
         with Vertical(id="toc-shell"):
             with Vertical(id="toc-box"):
                 yield Static("table of contents", id="toc-title")
-                yield ListView(*items, id="toc-list")
+                self._list = ListView(*items, id="toc-list")
+                yield self._list
                 yield Static(
                     "arrow keys select · enter jump · esc cancel",
                     id="toc-hint",
                 )
+
+    def on_mount(self) -> None:
+        """Highlight and center the current chapter, not the first one."""
+        if self._list is None or not self._list.children:
+            return
+        self._list.index = self._current_index
+        target = self._list.children[self._current_index]
+        # after refresh: sizes are final only once the first layout ran
+        self.call_after_refresh(
+            self._list.scroll_to_center, target, False  # animate=False
+        )
 
     def action_cancel(self) -> None:
         self.dismiss(None)

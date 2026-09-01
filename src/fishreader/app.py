@@ -482,7 +482,12 @@ class FishApp(App[None]):
             )
         else:
             hint = f"[{boss_key}]oss  [t]oc  [l]ibrary  [s]ettings  [q]uit"
-        sb.update(f"buff {pct:.1f}% | scroll {min(self.line_index+1, len(lines))}/{len(lines)} | {hint}")
+        n_chapters = len(book.chapters)
+        chap = f"chap {min(self.chapter_index + 1, n_chapters)}/{n_chapters} | "
+        sb.update(
+            f"buff {pct:.1f}% | {chap}"
+            f"scroll {min(self.line_index+1, len(lines))}/{len(lines)} | {hint}"
+        )
 
     # -- actions -------------------------------------------------------------------
 
