@@ -18,3 +18,5 @@ dist/
 # Readable content lives in books/; keep user novels out of git
 books/*
 !books/.gitkeep
+# IDE
+.idea/
