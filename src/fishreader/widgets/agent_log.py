@@ -32,7 +32,19 @@ def _append_with_code_highlights(
 
 
 class AgentLog(RichLog):
-    """Scrolling log pane fed by a FakeFeed on a randomized schedule."""
+    """Scrolling log pane fed by a FakeFeed on a randomized schedule.
+
+    Pure decoration: it must never swallow the arrow keys. RichLog inherits
+    up/down/left/right bindings for scrolling itself, and it is the only
+    focusable widget here, so it used to take focus at startup — killing
+    ↑/↓ ("scroll one line") outright, and ←/→ (paging) as soon as the log
+    had any horizontal scroll range to move (which happens after the boss
+    key resizes it: full width → narrow). Dropping focus and the inherited
+    bindings keeps every arrow key with the reader.
+    """
+
+    can_focus = False
+    BINDINGS: list = []
 
     def __init__(
         self,
